@@ -1,3 +1,6 @@
+import math
+from bisect import bisect_left, bisect_right
+
 from src.core.simulation_debug import debug_print
 from src.core.simulation_preflight import SimulationPreflightValidator
 from src.core.event_engine import EventEngine
@@ -176,6 +179,15 @@ class EventDrivenSimulator:
         deadline_transport = DeadlineAwareTransport(station_map=station_map, station_entry_times=state.station_entry_times)
         predictive_pickup = PredictivePickupScheduler(config=self.config, route=route, station_map=station_map, engine=self.engine, state=state)
         predictive_scheduled_pickups = set()
+        timeline_segments_by_manipulator = {
+            int(manipulator.id): [] for manipulator in self.config.manipulators
+        }
+        timeline_segment_starts = {
+            int(manipulator.id): [] for manipulator in self.config.manipulators
+        }
+        timeline_segment_prefix_ends = {
+            int(manipulator.id): [] for manipulator in self.config.manipulators
+        }
         # One hanger/source may have several queued wake-up events, but only
         # one physical transport may ever be committed for that route leg.
         active_transport_keys = set()
@@ -212,8 +224,32 @@ class EventDrivenSimulator:
         }
         max_shared_bath_retries = max(1, int(getattr(self.config, 'event_driven_max_shared_bath_retries', 200)))
 
+        def index_timeline_segment(segment):
+            manipulator_id = int(segment.manipulator_id)
+            segments = timeline_segments_by_manipulator.setdefault(
+                manipulator_id, []
+            )
+            starts = timeline_segment_starts.setdefault(manipulator_id, [])
+            prefix_ends = timeline_segment_prefix_ends.setdefault(
+                manipulator_id, []
+            )
+            start_time = float(segment.start_time)
+            index = bisect_right(starts, start_time)
+            segments.insert(index, segment)
+            starts.insert(index, start_time)
+            prefix_end = (
+                prefix_ends[index - 1] if index else float('-inf')
+            )
+            prefix_ends.insert(
+                index, max(prefix_end, float(segment.end_time))
+            )
+            for position in range(index + 1, len(segments)):
+                prefix_ends[position] = max(
+                    prefix_ends[position - 1],
+                    float(segments[position].end_time),
+                )
+
         def schedule_shared_bath_retry(event, retry_time, reason):
-            import math
             retry_key = (int(event.hanger_id) if event.hanger_id is not None else -1, int(event.target_station) if event.target_station is not None else -1, str(reason))
             retry_count = shared_bath_retry_counts.get(retry_key, 0) + 1
             shared_bath_retry_counts[retry_key] = retry_count
@@ -241,23 +277,110 @@ class EventDrivenSimulator:
             return True
 
         def proposal_respects_full_spacing(scheduled, manipulator, last_position):
-            travel_end=min(float(scheduled.transport_finish_time),float(scheduled.transport_start_time)+abs(float(scheduled.target_station)-float(scheduled.source_station))*float(manipulator.travel_time_per_position))
-            phases=[(scheduled.pickup_start_time,scheduled.pickup_finish_time,last_position,scheduled.source_station),(scheduled.pickup_finish_time,scheduled.transport_start_time,scheduled.source_station,scheduled.source_station),(scheduled.transport_start_time,travel_end,scheduled.source_station,scheduled.target_station),(travel_end,scheduled.transport_finish_time,scheduled.target_station,scheduled.target_station),(scheduled.return_start_time,scheduled.return_finish_time,scheduled.target_station,scheduled.return_position)]
-            required=float(self.config.minimum_manipulator_spacing); mid=int(manipulator.id); neighbors={mid-1,mid+1}
-            def pos(x0,x1,t0,t1,t):
-                if float(t1)<=float(t0): return float(x1)
-                r=max(0.0,min(1.0,(float(t)-float(t0))/(float(t1)-float(t0))))
-                return float(x0)+(float(x1)-float(x0))*r
-            for p0,p1,x0,x1 in phases:
-                p0=float(p0);p1=float(p1)
-                for other in result.timeline_segments:
-                    if int(other.manipulator_id) not in neighbors: continue
-                    o0=float(other.start_time);o1=float(other.end_time);a=max(p0,o0);b=min(p1,o1)
-                    if b+1e-9<a: continue
-                    for t in (a,b):
-                        mine=pos(x0,x1,p0,p1,t); theirs=pos(other.start_position,other.end_position,o0,o1,t)
-                        gap=(mine-theirs) if int(other.manipulator_id)<mid else (theirs-mine)
-                        if gap+1e-9<required: return False
+            travel_end = min(
+                float(scheduled.transport_finish_time),
+                float(scheduled.transport_start_time)
+                + abs(
+                    float(scheduled.target_station)
+                    - float(scheduled.source_station)
+                ) * float(manipulator.travel_time_per_position)
+            )
+            phases = (
+                (
+                    scheduled.pickup_start_time,
+                    scheduled.pickup_finish_time,
+                    last_position,
+                    scheduled.source_station,
+                ),
+                (
+                    scheduled.pickup_finish_time,
+                    scheduled.transport_start_time,
+                    scheduled.source_station,
+                    scheduled.source_station,
+                ),
+                (
+                    scheduled.transport_start_time,
+                    travel_end,
+                    scheduled.source_station,
+                    scheduled.target_station,
+                ),
+                (
+                    travel_end,
+                    scheduled.transport_finish_time,
+                    scheduled.target_station,
+                    scheduled.target_station,
+                ),
+                (
+                    scheduled.return_start_time,
+                    scheduled.return_finish_time,
+                    scheduled.target_station,
+                    scheduled.return_position,
+                ),
+            )
+            required = float(self.config.minimum_manipulator_spacing)
+            manipulator_id = int(manipulator.id)
+            neighbors = (manipulator_id - 1, manipulator_id + 1)
+
+            def position_at(start_position, end_position, start_time, end_time, time):
+                if float(end_time) <= float(start_time):
+                    return float(end_position)
+                ratio = max(
+                    0.0,
+                    min(
+                        1.0,
+                        (float(time) - float(start_time))
+                        / (float(end_time) - float(start_time)),
+                    ),
+                )
+                return float(start_position) + (
+                    float(end_position) - float(start_position)
+                ) * ratio
+
+            for phase_start, phase_end, start_position, end_position in phases:
+                phase_start = float(phase_start)
+                phase_end = float(phase_end)
+                for neighbor_id in neighbors:
+                    other_segments = timeline_segments_by_manipulator.get(
+                        neighbor_id, ()
+                    )
+                    starts = timeline_segment_starts.get(neighbor_id, ())
+                    prefix_ends = timeline_segment_prefix_ends.get(
+                        neighbor_id, ()
+                    )
+                    stop = bisect_right(starts, phase_end)
+                    begin = bisect_left(
+                        prefix_ends, phase_start, 0, stop
+                    )
+                    for index in range(begin, stop):
+                        other = other_segments[index]
+                        other_start = float(other.start_time)
+                        other_end = float(other.end_time)
+                        overlap_start = max(phase_start, other_start)
+                        overlap_end = min(phase_end, other_end)
+                        if overlap_end + 1e-9 < overlap_start:
+                            continue
+                        for time in (overlap_start, overlap_end):
+                            mine = position_at(
+                                start_position,
+                                end_position,
+                                phase_start,
+                                phase_end,
+                                time,
+                            )
+                            theirs = position_at(
+                                other.start_position,
+                                other.end_position,
+                                other_start,
+                                other_end,
+                                time,
+                            )
+                            gap = (
+                                mine - theirs
+                                if neighbor_id < manipulator_id
+                                else theirs - mine
+                            )
+                            if gap + 1e-9 < required:
+                                return False
             return True
 
         def commit_scheduled_transport(scheduled, event_time: float, delayed_by_queue: bool=False, delayed_by_no_passing: bool=False) -> bool:
@@ -340,8 +463,11 @@ class EventDrivenSimulator:
                 scheduled.manipulator_id, scheduled.return_finish_time
             )
             services.transport_scheduler.release_source_station_at_pickup(hanger_id=scheduled.hanger_id, source_station=scheduled.source_station, pickup_time=scheduled.pickup_finish_time)
+            first_new_segment = len(result.timeline_segments)
             self._append_idle_segment(result, manipulator, last_time, last_position, scheduled.pickup_start_time)
             self._append_motion_segments(result, manipulator, scheduled, last_position)
+            for segment in result.timeline_segments[first_new_segment:]:
+                index_timeline_segment(segment)
             if last_position != scheduled.source_station:
                 services.track_service.reserve(manipulator_id=manipulator.id, source_station=last_position, target_station=scheduled.source_station, start_time=scheduled.pickup_start_time, travel_time_per_position=manipulator.travel_time_per_position)
             services.track_service.reserve(manipulator_id=manipulator.id, source_station=scheduled.source_station, target_station=scheduled.target_station, start_time=scheduled.transport_start_time, travel_time_per_position=manipulator.travel_time_per_position)
@@ -495,7 +621,6 @@ class EventDrivenSimulator:
                     continue
                 earliest_pickup_time = predictive_pickup.ready_time(source_station, entry_time)
                 latest_pickup_time = predictive_pickup.latest_pickup_time(source_station, entry_time)
-                time_until_ready = earliest_pickup_time - event.time
                 commit_horizon = predictive_pickup.commit_horizon_for_station(source_station)
                 time_until_ready = earliest_pickup_time - event.time
                 if commit_horizon > 0 and time_until_ready > commit_horizon:
