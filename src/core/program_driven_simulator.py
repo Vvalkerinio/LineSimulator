@@ -345,6 +345,20 @@ class ProgramDrivenSimulator:
         violation_type = assessment.status
         result.process_compliance.append(ProcessComplianceRecord(hanger_id=hanger_id, station_id=station_id, entry_time=entry_time, exit_time=pickup_time, actual_time=actual_time, min_time=min_time, max_time=max_time, min_ok=min_ok, max_ok=max_ok, violation_type=violation_type, possible_min_time=float(station.possible_min_process_time), possible_max_time=float(station.possible_max_process_time), possible_min_ok=assessment.possible_min_ok, possible_max_ok=assessment.possible_max_ok, compliance_status=assessment.status, nominal_deviation=assessment.nominal_deviation))
 
+    def _pickup_release_time(self, state, station_id, pickup_start_time):
+        station = self._station_map().get(station_id)
+        if station is None or not bool(getattr(station, 'is_process_bath', True)):
+            return pickup_start_time
+        if station_id not in state['station_hangers']:
+            return pickup_start_time
+        entry_time = state['station_entry_times'].get(
+            (state['station_hangers'][station_id], station_id)
+        )
+        if entry_time is None:
+            return pickup_start_time
+        min_process_time = float(getattr(station, 'min_process_time', 0.0) or 0.0)
+        return max(pickup_start_time, float(entry_time) + max(0.0, min_process_time))
+
     def _append_move_segment(self, result, runtime, start_time, end_time, source_position, target_position):
         if end_time <= start_time:
             return
@@ -475,6 +489,27 @@ class ProgramDrivenSimulator:
             return (end_time, hanger_id)
         if action != runtime.current_action:
             if action == self.ACTION_PICKUP:
+                if str(getattr(step, 'status', '')) != 'TRANSFER_24_PICKUP':
+                    release_time = self._pickup_release_time(
+                        state,
+                        runtime.current_position,
+                        start_time
+                    )
+                    if release_time > start_time:
+                        self._append_idle_segment(
+                            result,
+                            runtime,
+                            start_time,
+                            release_time
+                        )
+                        debug_print(
+                            lambda: (
+                                f'PROGRAM BATH PICKUP BLOCKED M={runtime.manipulator_id} '
+                                f'S={runtime.current_position} T={start_time:.1f} '
+                                f'release_at={release_time:.1f}'
+                            )
+                        )
+                        start_time = release_time
                 end_time = start_time + manipulator.lift_time
                 if str(getattr(step, 'status', '')) == 'TRANSFER_24_PICKUP':
                     hanger_id = self._pickup_transfer_hanger(result=result, state=state, runtime=runtime, pickup_start_time=start_time, pickup_finish_time=end_time)

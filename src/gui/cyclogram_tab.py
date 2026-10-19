@@ -2402,33 +2402,10 @@ class CyclogramTab(QWidget):
 
         with synchronized_redirect_stdout(buffer):
             try:
-                initial_station_occupancy = (
-                    self._initial_station_occupancy_for_program_simulation()
+                print(
+                    "PROGRAM USING EMPTY INITIAL LINE AND CONFIGURATION "
+                    "MANIPULATOR POSITIONS"
                 )
-                initial_manipulator_positions = (
-                    self._initial_manipulator_positions_for_program_simulation()
-                )
-
-                if initial_station_occupancy is not None:
-                    print(
-                        "PROGRAM USING CYCLE INITIAL OCCUPANCY: "
-                        f"{sorted(initial_station_occupancy.items())}"
-                    )
-
-                else:
-                    print(
-                        "PROGRAM USING HEURISTIC INITIAL OCCUPANCY"
-                    )
-                if initial_manipulator_positions is not None:
-                    print(
-                        "PROGRAM USING CYCLE INITIAL MANIPULATOR POSITIONS: "
-                        f"{sorted(initial_manipulator_positions.items())}"
-                    )
-
-                else:
-                    print(
-                        "PROGRAM USING CONFIGURATION MANIPULATOR POSITIONS"
-                    )
 
                 simulator = ProgramDrivenSimulator(
                     configuration=(
@@ -2443,11 +2420,8 @@ class CyclogramTab(QWidget):
                     cycles=(
                         self.program_simulation_cycles.value()
                     ),
-                    initial_station_occupancy=(
-                        initial_station_occupancy
-                    ),
-                    initial_manipulator_positions=(
-                        initial_manipulator_positions
+                    initial_state_mode=(
+                        ProgramDrivenSimulator.INITIAL_STATE_EMPTY
                     )
                 )
 
