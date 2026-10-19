@@ -25,7 +25,8 @@ from PySide6.QtWidgets import (
     QScrollArea,
     QAbstractItemView,
     QSizePolicy,
-    QInputDialog
+    QInputDialog,
+    QStyledItemDelegate
 )
 
 from PySide6.QtGui import (
@@ -84,6 +85,49 @@ from src.analysis.consult_pipeline import (
 from src.analysis.iterative_consult_resolver import (
     IterativeConsultResolver
 )
+
+
+class StationDelegate(QStyledItemDelegate):
+    """Delegate showing a combo of stations as "<display_id> - <name>" while
+    storing the numeric display id (e.g. "2") in the table cell.
+    """
+    def __init__(self, stations, parent=None):
+        super().__init__(parent)
+        # stations: iterable of station objects with .id and .name
+        self.stations = sorted(list(stations or []), key=lambda s: int(s.id))
+
+    def createEditor(self, parent, option, index):
+        combo = QComboBox(parent)
+        combo.setEditable(False)
+        for s in self.stations:
+            disp = display_station_id(int(s.id))
+            name = str(getattr(s, "name", "")).strip()
+            combo.addItem(f"{disp} - {name}", disp)
+        return combo
+
+    def setEditorData(self, editor, index):
+        try:
+            current = index.data(Qt.EditRole)
+            if current is None:
+                current = index.data()
+            if current is None:
+                return
+            # editor itemData stores display id (int)
+            target = int(str(current))
+            for i in range(editor.count()):
+                if editor.itemData(i) == target:
+                    editor.setCurrentIndex(i)
+                    return
+        except Exception:
+            return
+
+    def setModelData(self, editor, model, index):
+        data = editor.currentData()
+        if data is None:
+            return
+        # store numeric display id as plain text so existing parsing works
+        model.setData(index, str(int(data)), Qt.EditRole)
+
 
 class EditableProgramConsult:
     def __init__(self):
@@ -2048,6 +2092,11 @@ class CyclogramTab(QWidget):
         rows = self._program_rows()
         self.table.clearContents()
         self.table.setRowCount(len(rows))
+
+        # Set a delegate for the "Stanowisko" column so editing shows
+        # "<display_id> - <name>" while the cell stores just the numeric id
+        stations = getattr(self.configuration, "stations", []) if self.configuration is not None else []
+        self.table.setItemDelegateForColumn(3, StationDelegate(stations, self))
 
         for row, (program, step) in enumerate(rows):
             base_address = program.index_address + 1 + (step.step_no - 1) * 3
