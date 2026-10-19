@@ -107,3 +107,50 @@ def test_empty_initial_state_ignores_supplied_station_occupancy():
 
     assert state["station_hangers"] == {}
     assert state["prefilled_hangers"] == 0
+
+
+def test_completed_manipulator_position_is_held_until_simulation_end():
+    configuration = SimulationConfiguration(
+        stations=[
+            Station(1, "Load", True, 0.0, 0.0, is_process_bath=False),
+            Station(2, "Bath", True, 10.0, 30.0),
+            Station(3, "Unload", True, 0.0, 0.0, is_process_bath=False),
+        ],
+        manipulators=[
+            Manipulator(1, 1, 1.0, 1.0, 1.0),
+            Manipulator(2, 5, 1.0, 1.0, 1.0),
+        ],
+    )
+    programs = {
+        1: ManipulatorProgram(
+            manipulator_id=1,
+            index_address=500,
+            steps=[
+                _step(1, 1, ProgramDrivenSimulator.ACTION_PICKUP),
+            ],
+        ),
+        2: ManipulatorProgram(
+            manipulator_id=2,
+            index_address=600,
+            steps=[
+                _step(1, 3, ProgramDrivenSimulator.ACTION_PICKUP),
+            ],
+        ),
+    }
+
+    result = ProgramDrivenSimulator(
+        configuration,
+        programs=programs,
+        cycles=1,
+        initial_state_mode=ProgramDrivenSimulator.INITIAL_STATE_EMPTY,
+    ).run()
+
+    hold = next(
+        segment
+        for segment in result.timeline_segments
+        if segment.manipulator_id == 1 and segment.segment_type == "idle"
+    )
+
+    assert hold.start_time == 1.0
+    assert hold.end_time == result.final_time == 3.0
+    assert hold.start_position == hold.end_position == 1

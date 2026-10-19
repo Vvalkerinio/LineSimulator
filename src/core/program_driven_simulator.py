@@ -661,6 +661,22 @@ class ProgramDrivenSimulator:
             self._execute_word(result=result, state=state, runtime=runtime, manipulator=manipulator, load_station=load_station, unload_station=unload_station)
             self._push_runtime(queue, runtime)
         result.final_time = max([runtime.available_time for runtime in runtimes.values()] or [0.0])
+        for runtime in runtimes.values():
+            completed_time = max(
+                (
+                    execution.end_time
+                    for execution in state['word_executions']
+                    if execution.manipulator_id == runtime.manipulator_id
+                ),
+                default=runtime.available_time
+            )
+            if completed_time < result.final_time:
+                self._append_idle_segment(
+                    result,
+                    runtime,
+                    completed_time,
+                    result.final_time
+                )
         result.generated_hangers = state['next_hanger_id']
         result.prefilled_hangers = state['prefilled_hangers']
         result.completed_transports = len(result.manipulator_tasks)
