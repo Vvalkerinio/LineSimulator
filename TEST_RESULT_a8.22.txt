@@ -1,0 +1,34 @@
+Line Simulator v1.1.0a8.22
+
+Compilation: PASS
+Backend regression: 276 passed, 0 failed
+
+Regression batches:
+- Batch 1: 49 passed
+- Batch 2: 66 passed
+- Batch 3: 34 passed
+- Batch 4: 26 passed
+- Batch 5: 19 passed
+- Batch 6: 34 passed
+- Batch 7: 19 passed
+- Batch 8: 22 passed
+- Batch 9: 7 passed
+
+Validated:
+- 12 transports/h * 7 pieces = 84 pieces/h
+- average cycle time from HANGER_EXIT intervals
+- ProgramDriven physical-exit semantics
+- ProgramDriven legacy cycle KPI fallback when exits are absent
+- old JSON defaults pieces_per_transport to 7
+- new JSON roundtrip
+- compact KPI widget and Simulation Details widget
+- EventDriven bath residence ends at pickup_start_time
+- object and dictionary deadlock compatibility
+
+Backend profile exclusions requiring PySide6:
+- tests/test_gui_imports.py
+- tests/test_process_tab.py
+- tests/test_results_tab.py
+- tests/test_results_tab_extended.py
+- tests/test_results_tab_warning_panel.py
+- tests/test_simulation_tab.py

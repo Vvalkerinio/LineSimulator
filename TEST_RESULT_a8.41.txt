@@ -1,0 +1,10 @@
+TEST RESULT 1.1.0a8.41
+Source: LineSimulatorv1.1.0a8.40.zip
+Source ZIP integrity: OK
+Compile before: OK
+Compile after: OK
+Targeted ideal-capacity tests: 10 passed
+Backend regression suite excluding 6 PySide6 GUI modules: 313 passed
+
+Speed sensitivity regression:
+Increasing loaded travel time per position from 4.5 to 6.0 increases ideal stage time and decreases ideal process throughput.

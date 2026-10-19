@@ -1,0 +1,15 @@
+TEST RESULT 1.1.0a8.31
+
+Źródło: LineSimulatorv1.1.0a8.30.zip
+Integralność źródłowego ZIP: OK
+Kompilacja przed zmianą: OK
+Kompilacja po zmianie: OK
+Testy ukierunkowane AssignmentSelector/EventDriven: 8 passed
+Pełny zestaw bez 6 modułów GUI wymagających PySide6: 291 passed
+
+Nowe scenariusze regresyjne:
+- DROP na obu wannach ODT 3/4 -> return do aktywnej pozycji nieprocesowej.
+- wykluczenie nieaktywnego miejsca parkingowego.
+- fallback nad procesową wyłącznie bez alternatywy w strefie.
+- zachowanie dotychczasowe dla celu nieprocesowego.
+- przekazanie klasyfikacji stacji przez SimulationServicesFactory.

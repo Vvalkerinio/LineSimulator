@@ -1,0 +1,37 @@
+// CONSULTS
+// PLC liczy każdy WORD jako osobny index.
+// Format roboczy:
+// Mx INDEX a WAIT UNTIL My INDEX b FINISHED
+
+M1 INDEX 25 WAIT UNTIL M2 INDEX 17 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M1 INDEX 40 WAIT UNTIL M2 INDEX 17 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M1 INDEX 49 WAIT UNTIL M2 INDEX 35 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M2 INDEX 13 WAIT UNTIL M1 INDEX 17 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M2 INDEX 31 WAIT UNTIL M1 INDEX 41 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M2 INDEX 25 WAIT UNTIL M3 INDEX 13 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M3 INDEX 4 WAIT UNTIL M2 INDEX 10 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M3 INDEX 19 WAIT UNTIL M2 INDEX 29 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M3 INDEX 13 WAIT UNTIL M4 INDEX 13 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M3 INDEX 28 WAIT UNTIL M4 INDEX 40 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0
+
+M4 INDEX 31 WAIT UNTIL M3 INDEX 16 FINISHED
+// CONSULT RĘCZNY source_time=0.0..0.0 target_time=0.0..0.0

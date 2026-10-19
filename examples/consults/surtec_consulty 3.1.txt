@@ -1,0 +1,31 @@
+// CONSULTS
+// PLC liczy każdy WORD jako osobny index.
+// Format roboczy:
+// Mx INDEX a WAIT UNTIL My INDEX b FINISHED
+
+M2 INDEX 13 (MW613) WAIT UNTIL M1 INDEX 17 (MW517) FINISHED
+// Material S6: M2 PICKUP czeka na M1 DROP. source_time=254.5..266.0 target_time=220.5..227.0
+
+M1 INDEX 40 (MW540) WAIT UNTIL M2 INDEX 14 (MW614) FINISHED
+// Clear S6: M1 DROP czeka na M2 PICKUP. source_time=584.5..591.0 target_time=254.5..266.0
+
+M2 INDEX 31 (MW631) WAIT UNTIL M1 INDEX 41 (MW541) FINISHED
+// Material S6: M2 PICKUP czeka na M1 DROP. source_time=618.5..630.0 target_time=584.5..591.0
+
+M3 INDEX 4 (MW704) WAIT UNTIL M2 INDEX 8 (MW608) FINISHED
+// Material S14: M3 PICKUP czeka na M2 DROP. source_time=130.5..142.0 target_time=98.5..105.0
+
+M2 INDEX 25 (MW625) WAIT UNTIL M3 INDEX 5 (MW705) FINISHED
+// Clear S14: M2 DROP czeka na M3 PICKUP. source_time=462.5..469.0 target_time=130.5..142.0
+
+M3 INDEX 19 (MW719) WAIT UNTIL M2 INDEX 29 (MW629) FINISHED
+// Material S14: M3 PICKUP czeka na M2 DROP. source_time=494.5..506.0 target_time=462.5..469.0
+
+M3 INDEX 13 (MW713) WAIT UNTIL M4 INDEX 5 (MW805) FINISHED
+// Clear S19: M3 DROP czeka na M4 PICKUP. source_time=207.0..213.5 target_time=66.0..82.5
+
+M4 INDEX 28 (MW828) WAIT UNTIL M3 INDEX 14 (MW714) FINISHED
+// Material S19: M4 PICKUP czeka na M3 DROP. source_time=430.0..446.5 target_time=207.0..213.5
+
+M3 INDEX 28 (MW728) WAIT UNTIL M4 INDEX 29 (MW829) FINISHED
+// Clear S19: M3 DROP czeka na M4 PICKUP. source_time=571.0..577.5 target_time=430.0..446.5

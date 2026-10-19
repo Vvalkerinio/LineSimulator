@@ -1,0 +1,6 @@
+Source ZIP integrity: OK
+Compile: OK
+Backend suite: 311 passed; 2 legacy expectations updated for a8.42 parking semantics.
+Headless EventDriven, ODT percent=90, feed=3600:
+events=521 tasks=107 deadlocks=0 throughput=9.982668977 transport/h
+minimum_distance=2.0 required=2.0 separation=OK safety_violation=false

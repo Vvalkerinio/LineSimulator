@@ -1,0 +1,24 @@
+TEST RESULT 1.1.0a8.55
+Source: LineSimulatorv1.1.0a8.54.zip
+Source ZIP integrity: OK
+Old work/output artifacts removed before analysis: YES
+Compile before/after: OK
+Targeted tests: 5 passed
+Backend regression: 326 passed
+
+Exact acceptance scenario:
+default.json; ODT percent=50%; M1 ST2..ST7; M1 parking ST6
+Generated hangers with tasks: 61
+Tasks: 610
+Events: 3238
+Deadlocks: 0
+Deferred at end: 0
+Minimum distance: 2.0
+Separation: OK
+Throughput: 12.521739130 transport/h
+Parts throughput: 87.652173913 szt/h
+Hard violations: 346
+ENTRY_ADMISSION_DEFERRED occurrences: 0
+
+Result: hangers are generated and move through the complete route; the simulation does not crash or deadlock and track separation is valid. Process compliance for percent=50 remains a separate unresolved scheduling/feasibility issue.
+ZIP integrity: OK

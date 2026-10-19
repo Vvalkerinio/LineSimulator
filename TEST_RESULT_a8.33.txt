@@ -1,0 +1,14 @@
+TEST RESULT 1.1.0a8.33
+
+Źródło: LineSimulatorv1.1.0a8.32.zip
+Integralność źródłowego ZIP: OK
+Kompilacja przed zmianą: OK
+Kompilacja po zmianie: OK
+Testy ukierunkowane SegmentBuilder/track reservation: 7 passed
+Pełny zestaw bez 6 modułów GUI wymagających PySide6: 297 passed
+
+Reprodukcja EventDriven, 12 zawieszek, ta sama konfiguracja:
+- 4.3 s/pozycję: 1.0683 s wykonania, 562 zdarzenia, 120 zadań, final_time=5023.800000000007, 0 deadlocków
+- 4.5 s/pozycję: 0.6810 s wykonania, 562 zdarzenia, 120 zadań, final_time=5051.0, 0 deadlocków
+
+Przed poprawką scenariusz 4.3 nie kończył się w limicie 45 s.

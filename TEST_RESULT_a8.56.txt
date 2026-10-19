@@ -1,0 +1,38 @@
+pytest: [32m.[0m[32m                                                                        [100%][0m
+[32m[32m[1m1 passed[0m[32m in 5.32s[0m[0m
+
+{
+  "odt70_zone": {
+    "events": 3377,
+    "tasks": 610,
+    "deadlocks": 1,
+    "completed_hangers": 0,
+    "minimum_distance": 1.0,
+    "required_distance": 2.0,
+    "separation_status": "COLLISION",
+    "track_safety_violation": true,
+    "precise_transports_per_hour": 11.432200698634489
+  },
+  "odt50_park6": {
+    "events": 3410,
+    "tasks": 610,
+    "deadlocks": 0,
+    "completed_hangers": 0,
+    "minimum_distance": 2.0,
+    "required_distance": 2.0,
+    "separation_status": "OK",
+    "track_safety_violation": false,
+    "precise_transports_per_hour": 11.707317073170731
+  },
+  "odt70_park6": {
+    "events": 3377,
+    "tasks": 610,
+    "deadlocks": 1,
+    "completed_hangers": 0,
+    "minimum_distance": 1.0,
+    "required_distance": 2.0,
+    "separation_status": "COLLISION",
+    "track_safety_violation": true,
+    "precise_transports_per_hour": 11.432200698634489
+  }
+}

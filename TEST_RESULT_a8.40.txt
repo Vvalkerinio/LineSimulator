@@ -1,0 +1,11 @@
+TEST RESULT 1.1.0a8.40
+Source ZIP integrity: OK
+Compile before: OK
+Compile after: OK
+Targeted theoretical/parking tests: 9 passed
+Backend regression suite excluding 6 PySide6 GUI modules: 312 passed
+ZIP integrity: OK
+
+Verified reporting example:
+9.89 transports/h * 7 pieces/transport = 69.23 szt/h.
+16.36 transports/h * 7 = 114.52 szt/h.

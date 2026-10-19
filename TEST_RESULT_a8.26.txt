@@ -1,0 +1,21 @@
+TEST RESULT 1.1.0a8.26
+
+Integralność źródłowego ZIP: OK
+Kompilacja przed zmianą: OK
+Kompilacja po zmianie: OK
+Testy ukierunkowane residence/process-bath: 11 passed
+Pełny zestaw bez 6 testów GUI wymagających PySide6: 283 passed
+
+Pominięte moduły GUI:
+- tests/test_gui_imports.py
+- tests/test_process_tab.py
+- tests/test_results_tab.py
+- tests/test_results_tab_extended.py
+- tests/test_results_tab_warning_panel.py
+- tests/test_simulation_tab.py
+
+Audyt Wanna procesowa:
+- konfiguracja i serializer: działa
+- ParkingPositionSelector: non-process first, process only fallback
+- TrajectoryAwarePrepositionPlanner: process bath excluded
+- globalna polityka EventDriven/PLC dla długiego postoju: brak centralnego enforcementu

@@ -1,0 +1,3 @@
+compileall: OK
+Analiza regresji: usunięto automatyczny return parking po procesach.
+Cel: parking jako zachowanie pasywne, nie obowiązkowa część transportu.

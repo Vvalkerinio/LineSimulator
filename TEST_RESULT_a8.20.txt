@@ -1,0 +1,35 @@
+Line Simulator v1.1.0a8.20
+
+Compilation: PASS
+Regression: 265 passed, 0 failed
+
+Regression batches:
+- Batch 1: 56 passed
+- Batch 2: 67 passed
+- Batch 3: 23 passed
+- Batch 4: 28 passed
+- Batch 5: 37 passed
+- Batch 6: 20 passed
+- Batch 7: 25 passed
+- Batch 8: 9 passed
+
+Focused validation included in regression:
+- Debug OFF is silent and lazy
+- Debug ON emits messages and restores context
+- Shared Bath earliest group availability
+- Unknown Shared Bath release fallback behavior
+- Indexed trajectory ordering and interpolation
+- Local overlapping-segment lookup
+- Event-track safety and wait behavior
+- Repeatable YIELD behavior
+
+Backend regression profile exclusions:
+- tests/test_gui_imports.py
+- tests/test_process_tab.py
+- tests/test_results_tab.py
+- tests/test_results_tab_extended.py
+- tests/test_results_tab_warning_panel.py
+- tests/test_simulation_tab.py
+
+Post-release diagnostic patch validation:
+- Shared Bath, EventDriven candidate, Debug and trajectory tests: 15 passed

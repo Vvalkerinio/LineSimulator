@@ -1,0 +1,14 @@
+TEST RESULT 1.1.0a8.39
+
+Source: LineSimulatorv1.1.0a8.38.zip
+Source ZIP integrity: OK
+Compile before changes: OK
+Compile after changes: OK
+Targeted theoretical capacity tests: 7 passed
+Backend regression suite excluding 6 PySide6 GUI modules: 310 passed
+
+Dedicated test verifies:
+- process ceiling from technology residence capacity
+- ideal path includes residence
+- ideal handling includes lift, source drip, loaded travel and drop
+- report renders the new section

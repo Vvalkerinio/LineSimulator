@@ -1,0 +1,11 @@
+TEST RESULT 1.1.0a8.32
+
+Źródło: LineSimulatorv1.1.0a8.31.zip
+Integralność źródłowego ZIP: OK
+Kompilacja przed zmianą: OK
+Kompilacja po zmianie: OK
+Testy ukierunkowane tabel: 3 passed
+Pełny zestaw bez 6 modułów GUI wymagających PySide6: 293 passed
+
+Ograniczenie środowiska:
+Brak PySide6 uniemożliwił ręczny smoke test renderowania zakładki Raporty na Windows. Warstwa tekstowa i statyczna integracja czcionki zostały zweryfikowane testami oraz kompilacją.

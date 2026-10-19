@@ -1,0 +1,12 @@
+TEST RESULT 1.1.0a8.27
+
+Źródło: LineSimulatorv1.1.0a8.26.zip
+Integralność źródłowego ZIP: OK
+Kompilacja przed zmianą: OK
+Kompilacja po zmianie: OK
+Testy statyczne nowej zakładki: 3 passed
+Pełny zestaw bez 6 testów GUI wymagających PySide6: 286 passed
+
+Ograniczenie środowiska:
+- Brak PySide6 uniemożliwił renderowanie i ręczny smoke test widgetów.
+- Testy statyczne nie zastępują ręcznej kontroli układu, sygnałów i płynności na Windows.

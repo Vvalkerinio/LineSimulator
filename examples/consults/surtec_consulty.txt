@@ -1,0 +1,28 @@
+// CONSULTS
+// PLC liczy każdy WORD jako osobny index.
+// Format roboczy:
+// Mx INDEX a WAIT UNTIL My INDEX b FINISHED
+
+M2 INDEX 1 (MW1601) WAIT UNTIL M1 INDEX 14 (MW1514) FINISHED
+// Material S6: M2 PICKUP czeka na M1 DROP. source_time=171.3..213.3 target_time=107.2..129.2
+
+M1 INDEX 37 (MW1537) WAIT UNTIL M2 INDEX 2 (MW1602) FINISHED
+// Clear S6: M1 DROP czeka na M2 PICKUP. source_time=530.6..552.6 target_time=171.3..213.3
+
+M2 INDEX 19 (MW1619) WAIT UNTIL M1 INDEX 38 (MW1538) FINISHED
+// Material S6: M2 PICKUP czeka na M1 DROP. source_time=571.6..613.6 target_time=530.6..552.6
+
+M2 INDEX 13 (MW1613) WAIT UNTIL M3 INDEX 2 (MW1702) FINISHED
+// Clear S14: M2 DROP czeka na M3 PICKUP. source_time=421.5..443.5 target_time=4.4..30.4
+
+M3 INDEX 16 (MW1716) WAIT UNTIL M2 INDEX 14 (MW1614) FINISHED
+// Material S14: M3 PICKUP czeka na M2 DROP. source_time=436.6..462.6 target_time=421.5..443.5
+
+M4 INDEX 7 (MW1807) WAIT UNTIL M3 INDEX 11 (MW1711) FINISHED
+// Material S19: M4 PICKUP czeka na M3 DROP. source_time=329.2..363.2 target_time=102.4..124.4
+
+M3 INDEX 25 (MW1725) WAIT UNTIL M4 INDEX 8 (MW1808) FINISHED
+// Clear S19: M3 DROP czeka na M4 PICKUP. source_time=524.6..546.6 target_time=329.2..363.2
+
+M2 INDEX 16 (MW1616) WAIT UNTIL M3 INDEX 22 (MW1722) FINISHED
+// Kolizja torowa: M2/M3 t=508.9s pos=14.00/14.00 d=0.00 types=empty_move/idle A=508.9..520.9 B=508.8..521.0. M2 IDX 16 czeka, aż M3 IDX 22 zwolni tor. source_time=500.7..520.9 target_time=567.0..567.0

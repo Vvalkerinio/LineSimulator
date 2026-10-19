@@ -1,0 +1,24 @@
+TEST RESULT 1.1.0a8.46
+Source ZIP integrity: OK
+Compile before/after: OK
+Targeted lifecycle test: passed
+Backend regression: 319 passed
+
+Headless EventDriven exact reported family:
+- ODT mode alternate, value 80
+- feed duration 3600 s
+- events: 2865
+- tasks: 610
+- deadlocks: 0
+- precise throughput: 9.890109890 transport/h
+- process operations: 610
+- nominal OK: 610
+- hard min violations: 0
+- hard max violations: 0
+- process compliance: 100.00%
+- minimum manipulator distance: 2.0
+- required distance: 2.0
+- separation: OK
+- duplicate transport H2 6->8: absent
+- illegal derived transport H2 15->20: absent
+ZIP integrity: OK

@@ -1,0 +1,21 @@
+TEST RESULT 1.1.0a8.51
+Source ZIP: LineSimulatorv1.1.0a8.50.zip
+Source integrity: OK
+Compile before/after: OK
+Targeted tests: 3 passed
+Backend regression: 322 passed
+
+Exact reproduction:
+M1 display zone ST2..ST7
+ODT mode alternate, value 80
+feed duration 3600 s
+Events: 2866
+Tasks: 610
+Deadlocks: 0
+Deferred: 0
+Hard violations: 0
+Minimum distance: 2.0
+Separation: OK
+Precise throughput: 9.890109890 transport/h
+Parts throughput: 69.230769231 szt/h
+ZIP integrity: OK

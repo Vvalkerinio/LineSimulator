@@ -1,0 +1,4 @@
+TEST RESULT 1.1.0a8.30
+Integralność źródłowego ZIP: OK
+Kompilacja przed zmianą: OK
+Kompilacja po zmianie: OK

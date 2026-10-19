@@ -1,0 +1,7 @@
+Source ZIP integrity: OK
+Compile before/after: OK
+AST isolation test: passed
+Headless repeated-run test, ODT percent=90, feed=3600, starts internal [5,11,16,22]:
+run1: separation=OK minimum_distance=2.0 deadlocks=0 tasks=107
+run2: separation=OK minimum_distance=2.0 deadlocks=0 tasks=107
+editor positions after both runs: [5,11,16,22]

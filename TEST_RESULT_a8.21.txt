@@ -1,0 +1,19 @@
+Line Simulator v1.1.0a8.21
+
+Compilation: PASS
+GUI/static and changed-scope regression: 28 passed, 0 failed
+Base a8.20 backend regression before this commit: 265 passed, 0 failed
+
+Validated:
+- Simulation progress controls and callback wiring
+- Incremental progress and final 100% callback
+- GUI Python syntax through AST
+- 12-column PLC program table
+- Station without offset and automatic PLC station conversion
+- New step control for an empty program
+- Manual ST23 DROP / ST24 PICKUP / ST22 DROP sequence
+- Shared Bath routing and candidate behavior
+- EventDriven watchdog and optimization behavior
+- Debug and trajectory indexes
+
+Note: GUI tests are static because PySide6 is not installed in the CI container.

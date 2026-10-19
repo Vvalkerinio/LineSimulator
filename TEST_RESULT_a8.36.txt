@@ -1,0 +1,17 @@
+TEST RESULT 1.1.0a8.36
+
+Source: LineSimulatorv1.1.0a8.35.zip
+Source ZIP integrity: OK
+Compile before changes: OK
+Compile after changes: OK
+Targeted tests: 18 passed
+Backend regression suite excluding 6 PySide6 GUI modules: 304 passed
+
+Covered cases:
+- float noise at Possible Min is OK
+- real 0.01 s minimum violation remains HARD_MIN_VIOLATION
+- preferred non-process parking wins over nearest parking
+- invalid/process favorite falls back safely
+- legacy configuration defaults favorite to start position
+- preferred parking serialization roundtrip
+- GUI numbering conversion and eighth column checked statically

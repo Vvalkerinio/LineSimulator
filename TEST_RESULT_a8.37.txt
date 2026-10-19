@@ -1,0 +1,17 @@
+TEST RESULT 1.1.0a8.37
+
+Source: LineSimulatorv1.1.0a8.36.zip
+Source ZIP integrity: OK
+Compile before changes: OK
+Compile after changes: OK
+Targeted GUI numbering/work-zone tests: 10 passed
+Backend regression suite excluding 6 PySide6 GUI modules: 307 passed
+
+Shared bath percent diagnosis:
+- percent=90 selected the first empty ODT bath immediately.
+- Reproduced user stop by setting M1.position=5 and M2.position=5.
+- Result: 0 tasks and 1 deadlock, matching the supplied log.
+- Therefore the immediate stop was caused by colliding initial manipulator positions, not the percent stagger selector.
+
+Limitation:
+- PySide6 GUI behavior requires manual Windows smoke test. Static GUI tests validate labels, conversions, ranges and validation markers.

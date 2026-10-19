@@ -1,0 +1,12 @@
+TEST RESULT 1.1.0a8.45
+Source ZIP: LineSimulatorv1.1.0a8.44.zip
+Source ZIP integrity: OK
+Compile before changes: OK
+Compile after changes: OK
+Targeted preflight/isolation tests: 5 passed
+Backend regression suite excluding 6 PySide6 GUI modules: 318 passed
+Headless EventDriven repeated-run test, ODT percent=50, feed=3600:
+- run 1: separation OK, minimum distance 2.0, deadlocks 0, tasks 106
+- run 2: separation OK, minimum distance 2.0, deadlocks 0, tasks 106
+- editor start positions unchanged after both runs
+ZIP integrity: OK

@@ -1,0 +1,1 @@
+Source a8.51 ZIP integrity OK. Percent=50 before: collision 1.772727<2, deadlocks 1, hard violations 103. After: spacing 2.0 OK, deadlocks 0, hard violations 19. Remaining process violations are not claimed fixed.

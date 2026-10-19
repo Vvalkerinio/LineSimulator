@@ -1,0 +1,22 @@
+TEST RESULT 1.1.0a8.24
+
+Integralnosc paczki zrodlowej: OK
+Kompilacja przed zmiana: OK
+Kompilacja po zmianie: OK
+Testy ukierunkowane: 14 passed
+Pelny zestaw bez 6 testow GUI wymagajacych PySide6: 282 passed
+
+Pominiete testy GUI:
+- tests/test_gui_imports.py
+- tests/test_process_tab.py
+- tests/test_results_tab.py
+- tests/test_results_tab_extended.py
+- tests/test_results_tab_warning_panel.py
+- tests/test_simulation_tab.py
+
+Powod: PySide6 nie jest zainstalowane w srodowisku wykonawczym.
+
+Benchmark klonowania, 20 000 iteracji:
+- deepcopy: 18.832549 s
+- clone_configuration_for_candidate: 2.482012 s
+- speedup: 7.59x

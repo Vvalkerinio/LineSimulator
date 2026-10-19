@@ -1,0 +1,7 @@
+TEST RESULT 1.1.0a8.34
+Source: LineSimulatorv1.1.0a8.33.zip
+ZIP integrity: OK
+Compile before: OK
+Compile after: OK
+AST wiring test: PASSED
+Root cause reproduced from user log: missing stations in GUI factory call.

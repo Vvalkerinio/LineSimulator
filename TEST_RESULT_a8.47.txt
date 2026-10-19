@@ -1,0 +1,19 @@
+TEST RESULT 1.1.0a8.47
+Source ZIP: LineSimulatorv1.1.0a8.46.zip
+Source ZIP integrity: OK
+Compile before/after: OK
+Targeted deferred lifecycle tests: 2 passed
+Backend regression: 320 passed
+
+Exact user reproduction, M1 display zone ST2..ST7:
+events=2866
+tasks=610
+deadlocks=0
+deferred=0
+separation=OK
+minimum_distance=2.0
+throughput=9.958506224 transport/h = 69.709543568 szt/h
+hard_max_violations=1 (H2, displayed ST8 / internal S7, actual 134.0 s, max 90.0 s)
+
+The reported KeyError is fixed. The remaining single process violation is recorded transparently and is not claimed as fixed by this patch.
+ZIP integrity: OK
