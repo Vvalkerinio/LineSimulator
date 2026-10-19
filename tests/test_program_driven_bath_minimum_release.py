@@ -1,4 +1,8 @@
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
+
 from src.core.program_driven_simulator import ProgramDrivenSimulator
+from src.gui.manipulator_trajectory_tab import ManipulatorTrajectoryTab
 from src.model.manipulator import Manipulator
 from src.model.manipulator_program import ManipulatorProgram
 from src.model.manipulator_program_step import ManipulatorProgramStep
@@ -148,9 +152,26 @@ def test_completed_manipulator_position_is_held_until_simulation_end():
     hold = next(
         segment
         for segment in result.timeline_segments
-        if segment.manipulator_id == 1 and segment.segment_type == "idle"
+        if segment.manipulator_id == 1 and segment.segment_type == "stationary_hold"
     )
 
     assert hold.start_time == 1.0
     assert hold.end_time == result.final_time == 3.0
     assert hold.start_position == hold.end_position == 1
+
+    class TrajectoryStyleContext:
+        SOURCE_OVERLAY = "overlay"
+
+        def _color_for_manipulator(self, _manipulator_id):
+            return QColor(40, 110, 220)
+
+        def _source_mode(self):
+            return "program"
+
+    pen = ManipulatorTrajectoryTab._style_pen_for_segment(
+        TrajectoryStyleContext(),
+        hold,
+        "program",
+    )
+
+    assert pen.style() == Qt.SolidLine

@@ -2086,7 +2086,12 @@ class ManipulatorTrajectoryTab(QWidget):
                 3
             )
 
-        if segment_type == "idle":
+        if segment_type == "stationary_hold":
+            pen.setStyle(
+                Qt.SolidLine
+            )
+
+        elif segment_type == "idle":
             pen.setStyle(
                 Qt.DotLine
             )

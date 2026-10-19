@@ -662,20 +662,25 @@ class ProgramDrivenSimulator:
             self._push_runtime(queue, runtime)
         result.final_time = max([runtime.available_time for runtime in runtimes.values()] or [0.0])
         for runtime in runtimes.values():
-            completed_time = max(
+            last_execution = max(
                 (
-                    execution.end_time
+                    execution
                     for execution in state['word_executions']
                     if execution.manipulator_id == runtime.manipulator_id
                 ),
-                default=runtime.available_time
+                key=lambda execution: execution.end_time,
+                default=None
             )
-            if completed_time < result.final_time:
-                self._append_idle_segment(
-                    result,
-                    runtime,
-                    completed_time,
-                    result.final_time
+            if last_execution is not None and last_execution.end_time < result.final_time:
+                result.timeline_segments.append(
+                    ManipulatorTimelineSegment(
+                        manipulator_id=runtime.manipulator_id,
+                        start_time=last_execution.end_time,
+                        end_time=result.final_time,
+                        start_position=last_execution.end_position,
+                        end_position=last_execution.end_position,
+                        segment_type='stationary_hold'
+                    )
                 )
         result.generated_hangers = state['next_hanger_id']
         result.prefilled_hangers = state['prefilled_hangers']
