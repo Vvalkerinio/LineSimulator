@@ -160,7 +160,15 @@ class AssignmentSelector:
         delta = earliest_pickup_time - assignment.pickup_finish_time
         return candidate_time + max(self.TRACK_SEARCH_STEP, delta)
 
-    def _find_best_assignment_for_manipulator(self, manipulator, source_station: int, target_station: int, current_time: float, earliest_pickup_time: float | None=None, allow_yield: bool=False):
+    def _next_candidate_time_for_earliest_transport_finish(self, assignment, earliest_transport_finish_time, candidate_time):
+        if earliest_transport_finish_time is None:
+            return None
+        if assignment.transport_finish_time >= earliest_transport_finish_time:
+            return None
+        delta = earliest_transport_finish_time - assignment.transport_finish_time
+        return candidate_time + max(self.TRACK_SEARCH_STEP, delta)
+
+    def _find_best_assignment_for_manipulator(self, manipulator, source_station: int, target_station: int, current_time: float, earliest_pickup_time: float | None=None, earliest_transport_finish_time: float | None=None, allow_yield: bool=False):
         if not self._is_allowed_by_work_zone(manipulator, source_station, target_station):
             return None
         earliest_time = max(current_time, self.availability.available_from(manipulator.id))
@@ -184,6 +192,14 @@ class AssignmentSelector:
                 earliest_pickup_time=earliest_pickup_time,
                 candidate_time=candidate_time
             )
+            if next_candidate_time is None:
+                next_candidate_time = (
+                    self._next_candidate_time_for_earliest_transport_finish(
+                        assignment=assignments[0],
+                        earliest_transport_finish_time=earliest_transport_finish_time,
+                        candidate_time=candidate_time
+                    )
+                )
             if next_candidate_time is not None:
                 candidate_time = next_candidate_time
                 continue
@@ -196,7 +212,7 @@ class AssignmentSelector:
                     return assignment
             if allow_yield and hasattr(self.transport_engine, 'propose_yield'):
                 proposal = self.transport_engine.propose_yield(
-                    blocked_target=target_station,
+                    blocked_target=source_station,
                     current_time=candidate_time
                 )
                 if proposal is not None:
@@ -230,12 +246,12 @@ class AssignmentSelector:
         self.pending_yield_proposal = None
         return proposal
 
-    def select(self, source_station: int, target_station: int, current_time: float, latest_pickup_time: float | None=None, earliest_pickup_time: float | None=None):
+    def select(self, source_station: int, target_station: int, current_time: float, latest_pickup_time: float | None=None, earliest_pickup_time: float | None=None, earliest_transport_finish_time: float | None=None):
         self.pending_yield_proposal = None
         best_assignment = None
         best_score = None
         for manipulator in self.manipulator_manager.all():
-            assignment = self._find_best_assignment_for_manipulator(manipulator=manipulator, source_station=source_station, target_station=target_station, current_time=current_time, earliest_pickup_time=earliest_pickup_time, allow_yield=False)
+            assignment = self._find_best_assignment_for_manipulator(manipulator=manipulator, source_station=source_station, target_station=target_station, current_time=current_time, earliest_pickup_time=earliest_pickup_time, earliest_transport_finish_time=earliest_transport_finish_time, allow_yield=False)
             if assignment is None:
                 continue
             score = self._assignment_score(manipulator, assignment, latest_pickup_time)
@@ -250,7 +266,7 @@ class AssignmentSelector:
                 best_score = score
         if best_assignment is None:
             for manipulator in self.manipulator_manager.all():
-                assignment = self._find_best_assignment_for_manipulator(manipulator=manipulator, source_station=source_station, target_station=target_station, current_time=current_time, earliest_pickup_time=earliest_pickup_time, allow_yield=True)
+                assignment = self._find_best_assignment_for_manipulator(manipulator=manipulator, source_station=source_station, target_station=target_station, current_time=current_time, earliest_pickup_time=earliest_pickup_time, earliest_transport_finish_time=earliest_transport_finish_time, allow_yield=True)
                 if assignment is not None:
                     best_assignment = assignment
                     break
