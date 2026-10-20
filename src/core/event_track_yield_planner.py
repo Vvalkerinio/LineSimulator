@@ -1,5 +1,5 @@
 from src.core.simulation_debug import debug_print
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 @dataclass(frozen=True)
 class EventTrackYieldMove:
@@ -87,6 +87,47 @@ class EventTrackYieldPlanner:
         yielding.position = int(round(move.end_position))
         debug_print(lambda: f'TRACK_YIELD_PLANNED blocked=M{move.blocked_manipulator_id} yielding=M{move.yielding_manipulator_id} move={move.start_position:.1f}->{move.end_position:.1f} time={move.start_time:.1f}->{move.end_time:.1f} target={move.blocked_target:.1f}')
         return move
+
+    def reschedule_for_parking(self, move, start_time, end_time):
+        if move not in self.moves:
+            return None
+        if (
+            float(end_time) > float(move.start_time) + 1e-9
+            or float(end_time) <= float(start_time)
+            or abs(float(self.availability.available_from(
+                move.yielding_manipulator_id
+            )) - float(move.end_time)) > 1e-9
+        ):
+            return None
+        yielding = self._find(move.yielding_manipulator_id)
+        if yielding is None:
+            return None
+        if not self.trajectory_manager.replace_move(
+            manipulator_id=move.yielding_manipulator_id,
+            start_position=int(round(move.start_position)),
+            end_position=int(round(move.end_position)),
+            old_start_time=float(move.start_time),
+            old_end_time=float(move.end_time),
+            new_start_time=float(start_time),
+            travel_time_per_position=float(yielding.travel_time_per_position),
+        ):
+            return None
+
+        updated = replace(
+            move,
+            start_time=float(start_time),
+            end_time=float(end_time),
+        )
+        self.moves[self.moves.index(move)] = updated
+        key = (
+            int(move.blocked_manipulator_id),
+            int(move.yielding_manipulator_id),
+            int(round(float(move.blocked_target))),
+        )
+        self._active_until[key] = float(end_time)
+        self.availability.reserve(move.yielding_manipulator_id, float(end_time))
+        debug_print(lambda: f'TRACK_YIELD_RESCHEDULED_FOR_PARKING M={move.yielding_manipulator_id} move={move.start_position:.1f}->{move.end_position:.1f} time={move.start_time:.1f}->{move.end_time:.1f} to={float(start_time):.1f}->{float(end_time):.1f}')
+        return updated
 
     def plan(self, conflict, blocked_target, current_time, required_gap):
         proposal = self.propose(conflict=conflict, blocked_target=blocked_target, current_time=current_time, required_gap=required_gap)

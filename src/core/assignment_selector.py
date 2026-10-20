@@ -213,7 +213,7 @@ class AssignmentSelector:
             if allow_yield and hasattr(self.transport_engine, 'propose_yield'):
                 proposal = self.transport_engine.propose_yield(
                     blocked_target=source_station,
-                    current_time=candidate_time
+                    current_time=current_time
                 )
                 if proposal is not None:
                     # Candidate evaluation is side-effect free. The caller may
