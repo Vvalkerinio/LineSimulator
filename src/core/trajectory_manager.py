@@ -34,7 +34,8 @@ class TrajectoryManager:
         self._revision += 1
 
     def add_move(self, manipulator_id, start_position, end_position,
-                 start_time, travel_time_per_position):
+                 start_time, travel_time_per_position,
+                 reservation_id=None):
         if start_position == end_position:
             self._trajectories[manipulator_id] = [
                 PositionSample(start_time, start_position)
@@ -45,6 +46,7 @@ class TrajectoryManager:
                 end_position=end_position,
                 start_time=start_time,
                 end_time=start_time,
+                reservation_id=reservation_id,
             ))
             return
         direction = 1 if end_position > start_position else -1
@@ -63,7 +65,28 @@ class TrajectoryManager:
             end_position=end_position,
             start_time=start_time,
             end_time=samples[-1].time,
+            reservation_id=reservation_id,
         ))
+
+    def remove_reservation(self, reservation_id):
+        self._segments = [
+            segment for segment in self._segments
+            if segment.reservation_id != reservation_id
+        ]
+        self._segments_by_manipulator = {}
+        self._segment_start_times = {}
+        for segment in sorted(
+            self._segments,
+            key=lambda item: float(item.start_time),
+        ):
+            manipulator_id = int(segment.manipulator_id)
+            self._segments_by_manipulator.setdefault(
+                manipulator_id, []
+            ).append(segment)
+            self._segment_start_times.setdefault(
+                manipulator_id, []
+            ).append(float(segment.start_time))
+        self._revision += 1
 
     def active_segments(self, start_time, end_time):
         result = []

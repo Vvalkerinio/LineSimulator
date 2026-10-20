@@ -24,6 +24,12 @@ class TrackCalendar:
 
         return self._reservations
 
+    def remove_reservation(self, reservation_id):
+        self._reservations = [
+            item for item in self._reservations
+            if item.reservation_id != reservation_id
+        ]
+
     def has_conflict(
         self,
         reservation: SegmentReservation

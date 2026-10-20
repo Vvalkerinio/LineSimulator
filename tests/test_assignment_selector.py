@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from src.model.manipulator import (
     Manipulator
 )
@@ -76,3 +78,46 @@ def test_assignment_selector():
     )
 
     assert assignment is not None
+
+
+def test_yield_proposal_uses_dispatch_time_not_future_availability():
+    manipulators = [
+        Manipulator(1, 6, 1.0, 1.0, 4.5, 1, 7),
+        Manipulator(2, 11, 1.0, 1.0, 4.5, 5, 14),
+    ]
+    manager = ManipulatorManager(manipulators)
+    availability = ManipulatorAvailability()
+    availability.reserve(2, 682.0)
+    proposal = object()
+
+    class TransportEngine:
+        def __init__(self):
+            self.yield_times = []
+
+        def position_at(self, manipulator, time_value):
+            return manipulator.position
+
+        def validate_order(self, manipulator, target_station, time_value):
+            return False
+
+        def propose_yield(self, blocked_target, current_time):
+            self.yield_times.append(current_time)
+            return proposal
+
+    transport_engine = TransportEngine()
+    selector = AssignmentSelector(
+        manager,
+        availability,
+        transport_engine,
+    )
+
+    assignment = selector.select(
+        source_station=6,
+        target_station=8,
+        current_time=594.5,
+        latest_pickup_time=684.5,
+    )
+
+    assert assignment is None
+    assert transport_engine.yield_times == [594.5]
+    assert selector.consume_pending_yield_proposal() is proposal

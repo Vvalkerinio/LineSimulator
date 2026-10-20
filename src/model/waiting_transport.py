@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from src.model.scheduled_transport import ScheduledTransport
 
 
 @dataclass
@@ -17,3 +18,11 @@ class WaitingTransport:
     ready_at: float
 
     process_time: float
+
+    provisional: bool = False
+
+    earliest_pickup_time: float | None = None
+
+    provisional_assignment: ScheduledTransport | None = None
+
+    provisional_reservation_id: str | None = None

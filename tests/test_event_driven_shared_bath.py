@@ -109,3 +109,64 @@ def test_process_end_commits_yield_to_clear_neighbor_from_pickup_station(monkeyp
         for move in result.event_track_yields
     )
     assert result.deferred_transports == []
+
+
+def test_provisional_pickups_do_not_overlap_manipulator_tasks():
+    station_values = {
+        1: (0.0, 999.9, 0.0, False, None, 0.0, 999.9),
+        3: (230.0, 300.0, 10.0, False, "ODT", 230.0, 350.0),
+        4: (230.0, 300.0, 10.0, False, "ODT", 230.0, 350.0),
+        5: (50.0, 90.0, 5.0, False, None, 50.0, 90.0),
+        6: (50.0, 90.0, 5.0, False, None, 50.0, 90.0),
+        8: (130.0, 160.0, 10.0, True, None, 130.0, 160.0),
+        14: (30.0, 90.0, 5.0, False, None, 30.0, 90.0),
+        15: (30.0, 90.0, 5.0, False, None, 30.0, 90.0),
+        19: (220.0, 240.0, 10.0, True, None, 200.0, 240.0),
+        20: (30.0, 90.0, 5.0, False, None, 30.0, 90.0),
+        21: (30.0, 90.0, 5.0, False, None, 30.0, 90.0),
+        22: (0.0, 999.9, 0.0, False, None, 0.0, 999.9),
+    }
+    stations = []
+    for station_id, values in station_values.items():
+        min_time, max_time, drip_time, is_process_bath, group, possible_min, possible_max = values
+        stations.append(Station(
+            station_id,
+            f"Station {station_id}",
+            True,
+            min_time,
+            max_time,
+            shared_bath_group=group,
+            drip_time=drip_time,
+            is_process_bath=is_process_bath,
+            possible_min_process_time=possible_min,
+            possible_max_process_time=possible_max,
+        ))
+    for station in stations:
+        if station.shared_bath_group == "ODT":
+            station.shared_bath_stagger_mode = "percent"
+            station.shared_bath_stagger_value = 85.0
+
+    configuration = SimulationConfiguration(
+        stations=stations,
+        manipulators=[
+            Manipulator(1, 4, 6.5, 6.5, 4.5, 1, 7),
+            Manipulator(2, 11, 6.5, 6.5, 4.5, 5, 14),
+            Manipulator(3, 16, 6.5, 6.5, 4.5, 12, 19),
+            Manipulator(4, 22, 6.5, 6.5, 4.5, 18, 22),
+        ],
+        hanger_count=5,
+        entry_interval=60.0,
+        minimum_manipulator_spacing=2.0,
+    )
+
+    result = EventDrivenSimulator(configuration).run()
+
+    tasks_by_manipulator = {}
+    for task in result.manipulator_tasks:
+        tasks_by_manipulator.setdefault(task.manipulator_id, []).append(task)
+    for tasks in tasks_by_manipulator.values():
+        tasks.sort(key=lambda task: task.start_time)
+        assert all(
+            later.start_time >= earlier.end_time
+            for earlier, later in zip(tasks, tasks[1:])
+        )

@@ -63,7 +63,8 @@ class TrackReservationService:
         source_station: int,
         target_station: int,
         start_time: float,
-        travel_time_per_position: float
+        travel_time_per_position: float,
+        reservation_id=None,
     ) -> None:
 
         reservations = (
@@ -86,7 +87,10 @@ class TrackReservationService:
         )
 
         for reservation in reservations:
-
+            reservation.reservation_id = reservation_id
             self.track_calendar.add(
                 reservation
             )
+
+    def cancel_reservation(self, reservation_id):
+        self.track_calendar.remove_reservation(reservation_id)

@@ -192,6 +192,7 @@ class EventDrivenSimulator:
         # one physical transport may ever be committed for that route leg.
         active_transport_keys = set()
         completed_transport_keys = set()
+        released_queued_transport_sources = set()
         processor = EventDrivenProcessor(state)
         process_engine = ProcessTimeEngine()
         passing_detector = EventDrivenPassingDetector(services.trajectory_manager, services.manipulator_manager)
@@ -204,16 +205,23 @@ class EventDrivenSimulator:
         next_prefill_hanger_id = self._prefill_active_baths(route=route, state=state, station_manager=station_manager, station_map=station_map, process_engine=process_engine, result=result, next_hanger_id=next_prefill_hanger_id)
         result.generated_hangers = len(hangers) + (next_prefill_hanger_id - max_factory_hanger_id - 1)
 
-        def defer_transport(hanger_id: int, manipulator_id: int | None, source_station: int, target_station: int, current_time: float, reason: str, ready_at: float | None = None):
+        def defer_transport(hanger_id: int, manipulator_id: int | None, source_station: int, target_station: int, current_time: float, reason: str, ready_at: float | None = None, provisional: bool = False, earliest_pickup_time: float | None = None):
             effective_ready_at = max(
                 float(current_time),
                 float(current_time if ready_at is None else ready_at)
             )
             existing = deferred_transports.get(hanger_id)
             if existing is not None:
-                existing.ready_at = max(float(existing.ready_at), effective_ready_at)
+                existing.ready_at = (
+                    effective_ready_at
+                    if provisional
+                    else max(float(existing.ready_at), effective_ready_at)
+                )
+                existing.provisional = existing.provisional or provisional
+                if earliest_pickup_time is not None:
+                    existing.earliest_pickup_time = float(earliest_pickup_time)
                 return
-            deferred_transports[hanger_id] = WaitingTransport(hanger_id=hanger_id, manipulator_id=manipulator_id if manipulator_id is not None else -1, source_station=source_station, target_station=target_station, requested_at=current_time, ready_at=effective_ready_at, process_time=0.0)
+            deferred_transports[hanger_id] = WaitingTransport(hanger_id=hanger_id, manipulator_id=manipulator_id if manipulator_id is not None else -1, source_station=source_station, target_station=target_station, requested_at=current_time, ready_at=effective_ready_at, process_time=0.0, provisional=provisional, earliest_pickup_time=earliest_pickup_time)
             deadline_description = deadline_transport.describe(hanger_id=hanger_id, station_id=source_station, current_time=current_time)
             debug_print(lambda: f'DEFERRED H={hanger_id} {source_station}->{target_station} T={current_time:.1f} reason={reason} {deadline_description}')
         shared_bath_retry_counts = {}
@@ -381,6 +389,47 @@ class EventDrivenSimulator:
                             )
                             if gap + 1e-9 < required:
                                 return False
+            idle_start = float(scheduled.return_finish_time)
+            idle_position = float(scheduled.return_position)
+            for neighbor_id in neighbors:
+                other_segments = timeline_segments_by_manipulator.get(
+                    neighbor_id, ()
+                )
+                for other in other_segments:
+                    other_start = float(other.start_time)
+                    other_end = float(other.end_time)
+                    overlap_start = max(idle_start, other_start)
+                    if other_end + 1e-9 < overlap_start:
+                        continue
+                    for time in (overlap_start, other_end):
+                        theirs = position_at(
+                            other.start_position,
+                            other.end_position,
+                            other_start,
+                            other_end,
+                            time,
+                        )
+                        gap = (
+                            idle_position - theirs
+                            if neighbor_id < manipulator_id
+                            else theirs - idle_position
+                        )
+                        if gap + 1e-9 < required:
+                            return False
+                neighbor_last_state = last_manipulator_state.get(
+                    neighbor_id
+                )
+                if neighbor_last_state is not None:
+                    neighbor_last_time, neighbor_last_position = (
+                        neighbor_last_state
+                    )
+                    if (
+                        idle_start >= float(neighbor_last_time)
+                        and abs(
+                            idle_position - float(neighbor_last_position)
+                        ) + 1e-9 < required
+                    ):
+                        return False
             return True
 
         def commit_scheduled_transport(scheduled, event_time: float, delayed_by_queue: bool=False, delayed_by_no_passing: bool=False) -> bool:
@@ -502,6 +551,166 @@ class EventDrivenSimulator:
             debug_print(lambda: f'M={scheduled.manipulator_id} pickup={scheduled.pickup_finish_time:.1f} source={scheduled.source_station}')
             return True
 
+        def cancel_provisional_plan(waiting):
+            reservation_id = waiting.provisional_reservation_id
+            if reservation_id is None:
+                services.transport_scheduler.cancel_provisional_transport(
+                    hanger_id=int(waiting.hanger_id),
+                    source_station=int(waiting.source_station),
+                    target_station=int(waiting.target_station),
+                )
+                return
+            services.transport_scheduler.cancel_provisional_transport(
+                hanger_id=int(waiting.hanger_id),
+                source_station=int(waiting.source_station),
+                target_station=int(waiting.target_station),
+            )
+            availability = (
+                services.transport_scheduler.assignment_selector.availability
+            )
+            availability.cancel_provisional(reservation_id)
+            services.trajectory_manager.remove_reservation(reservation_id)
+            services.track_service.cancel_reservation(reservation_id)
+            waiting.provisional_reservation_id = None
+
+        def reserve_provisional_motion(scheduled, reservation_id):
+            manipulator = services.manipulator_manager.get(
+                int(scheduled.manipulator_id)
+            )
+            assignment_engine = (
+                services.transport_scheduler
+                .assignment_selector.transport_engine
+            )
+            start_position = assignment_engine.position_at(
+                manipulator,
+                float(scheduled.pickup_start_time),
+            )
+            if start_position is None or float(start_position) == 0.0:
+                start_position = float(manipulator.position)
+            travel_time = float(manipulator.travel_time_per_position)
+            if int(round(start_position)) != int(scheduled.source_station):
+                services.trajectory_manager.add_move(
+                    manipulator_id=int(manipulator.id),
+                    start_position=int(round(start_position)),
+                    end_position=int(scheduled.source_station),
+                    start_time=float(scheduled.pickup_start_time),
+                    travel_time_per_position=travel_time,
+                    reservation_id=reservation_id,
+                )
+                services.track_service.reserve(
+                    manipulator_id=int(manipulator.id),
+                    source_station=int(round(start_position)),
+                    target_station=int(scheduled.source_station),
+                    start_time=float(scheduled.pickup_start_time),
+                    travel_time_per_position=travel_time,
+                    reservation_id=reservation_id,
+                )
+            if int(scheduled.source_station) != int(scheduled.target_station):
+                services.trajectory_manager.add_move(
+                    manipulator_id=int(manipulator.id),
+                    start_position=int(scheduled.source_station),
+                    end_position=int(scheduled.target_station),
+                    start_time=float(scheduled.transport_start_time),
+                    travel_time_per_position=travel_time,
+                    reservation_id=reservation_id,
+                )
+                services.track_service.reserve(
+                    manipulator_id=int(manipulator.id),
+                    source_station=int(scheduled.source_station),
+                    target_station=int(scheduled.target_station),
+                    start_time=float(scheduled.transport_start_time),
+                    travel_time_per_position=travel_time,
+                    reservation_id=reservation_id,
+                )
+            if int(scheduled.target_station) != int(scheduled.return_position):
+                services.trajectory_manager.add_move(
+                    manipulator_id=int(manipulator.id),
+                    start_position=int(scheduled.target_station),
+                    end_position=int(scheduled.return_position),
+                    start_time=float(scheduled.return_start_time),
+                    travel_time_per_position=travel_time,
+                    reservation_id=reservation_id,
+                )
+                services.track_service.reserve(
+                    manipulator_id=int(manipulator.id),
+                    source_station=int(scheduled.target_station),
+                    target_station=int(scheduled.return_position),
+                    start_time=float(scheduled.return_start_time),
+                    travel_time_per_position=travel_time,
+                    reservation_id=reservation_id,
+                )
+            services.transport_scheduler.assignment_selector.availability.reserve_provisional(
+                reservation_id=reservation_id,
+                manipulator_id=int(scheduled.manipulator_id),
+                start_time=float(scheduled.pickup_start_time),
+                finish_time=float(scheduled.return_finish_time),
+            )
+
+        def defer_provisional_transport(
+            scheduled,
+            current_time: float,
+            earliest_pickup_time: float | None = None,
+        ) -> bool:
+            pickup_start_time = float(scheduled.pickup_start_time)
+            if pickup_start_time > float(current_time) + 1e-9:
+                existing = deferred_transports.get(
+                    int(scheduled.hanger_id)
+                )
+                if (
+                    existing is not None
+                    and existing.provisional_reservation_id is not None
+                ):
+                    cancel_provisional_plan(existing)
+            if not services.transport_scheduler.update_target_station_reservation(
+                hanger_id=int(scheduled.hanger_id),
+                target_station=int(scheduled.target_station),
+                drop_time=float(scheduled.transport_finish_time),
+            ):
+                return False
+            services.transport_scheduler.release_source_station_at_pickup(
+                hanger_id=int(scheduled.hanger_id),
+                source_station=int(scheduled.source_station),
+                pickup_time=float(scheduled.pickup_finish_time),
+                provisional=True,
+            )
+            if pickup_start_time <= float(current_time) + 1e-9:
+                return False
+            defer_transport(
+                hanger_id=int(scheduled.hanger_id),
+                manipulator_id=int(scheduled.manipulator_id),
+                source_station=int(scheduled.source_station),
+                target_station=int(scheduled.target_station),
+                current_time=current_time,
+                reason='PROVISIONAL_ASSIGNMENT',
+                ready_at=pickup_start_time,
+                provisional=True,
+                earliest_pickup_time=earliest_pickup_time,
+            )
+            waiting = deferred_transports[int(scheduled.hanger_id)]
+            reservation_id = (
+                f'{int(scheduled.hanger_id)}:{int(scheduled.source_station)}'
+            )
+            reserve_provisional_motion(scheduled, reservation_id)
+            waiting.provisional_assignment = scheduled
+            waiting.provisional_reservation_id = reservation_id
+            self.engine.schedule(Event(
+                pickup_start_time,
+                EventType.QUEUE_RELEASE,
+                None,
+                None,
+                None,
+                int(scheduled.source_station),
+            ))
+            debug_print(
+                lambda: (
+                    f'PROVISIONAL_TRANSPORT H={scheduled.hanger_id} '
+                    f'{scheduled.source_station}->{scheduled.target_station} '
+                    f'M={scheduled.manipulator_id} '
+                    f'finalize_at={pickup_start_time:.1f}'
+                )
+            )
+            return True
+
         def earlier_deadline_waiting_for_target(hanger_id: int, target_station: int, latest_pickup_time):
             if latest_pickup_time is None:
                 return None
@@ -521,6 +730,24 @@ class EventDrivenSimulator:
                 return None
             move = selector.transport_engine.commit_yield(proposal)
             if move is not None:
+                index_timeline_segment(ManipulatorTimelineSegment(
+                    manipulator_id=int(move.yielding_manipulator_id),
+                    start_time=float(move.start_time),
+                    end_time=float(move.end_time),
+                    start_position=float(move.start_position),
+                    end_position=float(move.end_position),
+                    segment_type='yield',
+                ))
+                last_time, _ = last_manipulator_state[
+                    int(move.yielding_manipulator_id)
+                ]
+                if float(move.end_time) >= float(last_time):
+                    last_manipulator_state[
+                        int(move.yielding_manipulator_id)
+                    ] = (
+                        float(move.end_time),
+                        float(move.end_position),
+                    )
                 self.engine.schedule(Event(
                     float(move.end_time), EventType.QUEUE_RELEASE,
                     None, None, None, wake_station
@@ -537,16 +764,106 @@ class EventDrivenSimulator:
             debug_print(lambda: f'WAKE DEFERRED count={len(deferred_transports)} T={current_time:.1f} reason={reason}')
             ordered_waiting = sorted(list(deferred_transports.items()), key=lambda item: deadline_transport.priority_key(hanger_id=item[1].hanger_id, station_id=item[1].source_station, current_time=current_time))
             for hanger_id, waiting in ordered_waiting:
+                if station_manager.state(
+                    int(waiting.source_station)
+                ).hanger_id != int(waiting.hanger_id):
+                    cancel_provisional_plan(waiting)
+                    deferred_transports.pop(hanger_id, None)
+                    continue
                 if float(current_time) + 1e-9 < float(waiting.ready_at):
                     continue
-                latest_pickup_time = deadline_transport.latest_pickup_time(hanger_id=waiting.hanger_id, station_id=waiting.source_station)
-                scheduled = services.transport_scheduler.schedule(hanger_id=waiting.hanger_id, source_station=waiting.source_station, target_station=waiting.target_station, current_time=current_time, latest_pickup_time=latest_pickup_time)
+                scheduled = waiting.provisional_assignment
+                if scheduled is not None:
+                    availability = (
+                        services.transport_scheduler
+                        .assignment_selector.availability
+                    )
+                    if (
+                        float(scheduled.pickup_start_time)
+                        + 1e-9 < float(current_time)
+                        or availability.has_conflicting_reservation(
+                            manipulator_id=int(scheduled.manipulator_id),
+                            start_time=float(scheduled.pickup_start_time),
+                            finish_time=float(scheduled.return_finish_time),
+                            excluding=waiting.provisional_reservation_id,
+                        )
+                    ):
+                        cancel_provisional_plan(waiting)
+                        waiting.provisional = False
+                        waiting.provisional_assignment = None
+                        scheduled = None
                 if scheduled is None:
+                    latest_pickup_time = deadline_transport.latest_pickup_time(hanger_id=waiting.hanger_id, station_id=waiting.source_station)
+                    scheduled = services.transport_scheduler.schedule(hanger_id=waiting.hanger_id, source_station=waiting.source_station, target_station=waiting.target_station, current_time=current_time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=waiting.earliest_pickup_time)
+                latest_pickup_time = deadline_transport.latest_pickup_time(
+                    hanger_id=waiting.hanger_id,
+                    station_id=waiting.source_station,
+                )
+                if (
+                    scheduled is None
+                    or (
+                        latest_pickup_time is not None
+                        and float(scheduled.pickup_finish_time)
+                        > float(latest_pickup_time) + 1e-9
+                    )
+                ):
+                    current_priority = deadline_transport.priority_key(
+                        hanger_id=waiting.hanger_id,
+                        station_id=waiting.source_station,
+                        current_time=current_time,
+                    )
+                    released_lower_priority_plan = False
+                    for other in deferred_transports.values():
+                        if (
+                            int(other.hanger_id) == int(waiting.hanger_id)
+                            or not other.provisional
+                            or other.provisional_assignment is None
+                        ):
+                            continue
+                        other_priority = deadline_transport.priority_key(
+                            hanger_id=other.hanger_id,
+                            station_id=other.source_station,
+                            current_time=current_time,
+                        )
+                        if other_priority <= current_priority:
+                            continue
+                        cancel_provisional_plan(other)
+                        other.provisional = False
+                        other.provisional_assignment = None
+                        released_lower_priority_plan = True
+                    if waiting.provisional:
+                        cancel_provisional_plan(waiting)
+                        waiting.provisional = False
+                        waiting.provisional_assignment = None
+                    if released_lower_priority_plan or scheduled is None:
+                        scheduled = services.transport_scheduler.schedule(
+                            hanger_id=waiting.hanger_id,
+                            source_station=waiting.source_station,
+                            target_station=waiting.target_station,
+                            current_time=current_time,
+                            latest_pickup_time=latest_pickup_time,
+                            earliest_pickup_time=waiting.earliest_pickup_time,
+                        )
+                if scheduled is None:
+                    if waiting.provisional:
+                        cancel_provisional_plan(waiting)
+                        waiting.provisional = False
+                        waiting.provisional_assignment = None
                     move = commit_selector_yield(current_time, waiting.source_station)
                     if move is not None:
                         waiting.ready_at = max(float(waiting.ready_at), float(move.end_time))
                         break
                     continue
+                if defer_provisional_transport(
+                    scheduled=scheduled,
+                    current_time=current_time,
+                    earliest_pickup_time=waiting.earliest_pickup_time,
+                ):
+                    continue
+                if waiting.provisional:
+                    cancel_provisional_plan(waiting)
+                    waiting.provisional = False
+                    waiting.provisional_assignment = None
                 ok = commit_scheduled_transport(
                     scheduled=scheduled,
                     event_time=current_time,
@@ -608,7 +925,10 @@ class EventDrivenSimulator:
             if event.event_type == EventType.PREDICTIVE_PICKUP_CHECK:
                 source_station = event.target_station
                 key = (event.hanger_id, source_station)
-                if key in predictive_scheduled_pickups:
+                if (
+                    key in predictive_scheduled_pickups
+                    or event.hanger_id in deferred_transports
+                ):
                     continue
                 if not predictive_pickup.station_still_contains_hanger(station_manager=station_manager, hanger_id=event.hanger_id, station_id=source_station):
                     debug_print(lambda: f'PREDICTIVE_PICKUP_SKIP H={event.hanger_id} S={source_station} reason=HANGER_NOT_ON_STATION')
@@ -660,10 +980,17 @@ class EventDrivenSimulator:
                         target_station=next_station,
                         current_time=event.time,
                         reason='YIELD_REQUIRED' if move is not None else 'PREDICTIVE_BLOCKED',
-                        ready_at=retry_time
+                        ready_at=retry_time,
+                        earliest_pickup_time=earliest_pickup_time,
                     )
                     self.engine.schedule(Event(retry_time, EventType.QUEUE_RELEASE, None, None, None, source_station))
                     debug_print(lambda: f'PREDICTIVE_PICKUP_FAILED H={event.hanger_id} SRC={source_station} DST={next_station} T={event.time:.1f}')
+                    continue
+                if defer_provisional_transport(
+                    scheduled=scheduled,
+                    current_time=event.time,
+                    earliest_pickup_time=earliest_pickup_time,
+                ):
                     continue
                 state.pending_process_end_times[event.hanger_id, source_station] = earliest_pickup_time
                 ok = commit_scheduled_transport(scheduled=scheduled, event_time=event.time)
@@ -711,6 +1038,25 @@ class EventDrivenSimulator:
                 if next_station is None:
                     schedule_shared_bath_retry(event=event, retry_time=schedule_time, reason='GROUP_OCCUPIED')
                     continue
+                if (
+                    float(schedule_time) - float(event.time)
+                    > max(0.0, float(predictive_pickup.horizon_time()))
+                    + 1e-9
+                ):
+                    if schedule_shared_bath_retry(
+                        event=event,
+                        retry_time=schedule_time,
+                        reason='STAGGERED_SHARED_BATH_ENTRY',
+                    ):
+                        debug_print(
+                            lambda: (
+                                f'SHARED_BATH_ENTRY_DEFER_COMMIT '
+                                f'H={event.hanger_id} SRC={event.target_station} '
+                                f'DST={next_station} current={event.time:.1f} '
+                                f'retry_at={schedule_time:.1f}'
+                            )
+                        )
+                    continue
                 deadline_text = deadline_transport.describe(hanger_id=event.hanger_id, station_id=event.target_station, current_time=event.time)
                 debug_print(lambda: f'H={event.hanger_id} {event.target_station} -> {next_station} schedule_at={schedule_time:.1f} {deadline_text}')
                 latest_pickup_time = deadline_transport.latest_pickup_time(hanger_id=event.hanger_id, station_id=event.target_station)
@@ -728,6 +1074,11 @@ class EventDrivenSimulator:
                         ready_at=move.end_time if move is not None else None
                     )
                     continue
+                if defer_provisional_transport(
+                    scheduled=scheduled,
+                    current_time=event.time,
+                ):
+                    continue
                 ok = commit_scheduled_transport(scheduled=scheduled, event_time=event.time)
                 if not ok:
                     continue
@@ -737,18 +1088,46 @@ class EventDrivenSimulator:
                 if transport_key not in active_transport_keys:
                     debug_print(lambda: f'DUPLICATE_TRANSPORT_END_SKIPPED H={event.hanger_id} S={event.source_station}')
                     continue
+                target_station = event.target_station
+                if not station_manager.is_available(target_station, event.time):
+                    if event.source_station is not None:
+                        source_state = station_manager.state(event.source_station)
+                        if source_state.hanger_id == event.hanger_id:
+                            station_manager.release(event.source_station)
+                            released_queued_transport_sources.add(
+                                transport_key
+                            )
+                            if event.source_station == route[0]:
+                                self.engine.schedule(Event(
+                                    event.time, EventType.ENTRY_RELEASE,
+                                    None, None, None, route[0]
+                                ))
+                            self.engine.schedule(Event(
+                                event.time, EventType.QUEUE_RELEASE,
+                                None, None, None, event.source_station
+                            ))
+                            wake_deferred_transports(
+                                current_time=event.time,
+                                reason='TRANSPORT_QUEUED_SOURCE_RELEASE',
+                            )
+                    queue_manager.enqueue(target_station, WaitingTransport(hanger_id=event.hanger_id, manipulator_id=event.manipulator_id, source_station=event.source_station, target_station=target_station, requested_at=event.time, ready_at=event.time, process_time=0))
+                    continue
                 active_transport_keys.remove(transport_key)
                 completed_transport_keys.add(transport_key)
                 deferred_transports.pop(int(event.hanger_id), None)
-                target_station = event.target_station
-                if not station_manager.is_available(target_station, event.time):
-                    queue_manager.enqueue(target_station, WaitingTransport(hanger_id=event.hanger_id, manipulator_id=event.manipulator_id, source_station=event.source_station, target_station=target_station, requested_at=event.time, ready_at=event.time, process_time=0))
-                    continue
-                if event.source_station is not None:
+                if (
+                    event.source_station is not None
+                    and transport_key
+                    not in released_queued_transport_sources
+                ):
                     station_manager.release(event.source_station)
                     if event.source_station == route[0]:
-                        self.engine.schedule(Event(event.time, EventType.ENTRY_RELEASE, None, None, None, route[0]))
+                        self.engine.schedule(Event(
+                            event.time, EventType.ENTRY_RELEASE,
+                            None, None, None, route[0]
+                        ))
                     self.engine.schedule(Event(event.time, EventType.QUEUE_RELEASE, None, None, None, event.source_station))
+                released_queued_transport_sources.discard(transport_key)
                 current_index = state.hanger_route_index[event.hanger_id]
                 state.hanger_route_index[event.hanger_id] = current_index + 1
                 station = station_map[target_station]

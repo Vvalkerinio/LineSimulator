@@ -13,3 +13,5 @@ class SegmentReservation:
     start_time: float
 
     end_time: float
+
+    reservation_id: object | None = None
