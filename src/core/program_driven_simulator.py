@@ -347,7 +347,7 @@ class ProgramDrivenSimulator:
 
     def _pickup_release_time(self, state, station_id, pickup_start_time):
         station = self._station_map().get(station_id)
-        if station is None or not bool(getattr(station, 'is_process_bath', True)):
+        if station is None:
             return pickup_start_time
         if station_id not in state['station_hangers']:
             return pickup_start_time

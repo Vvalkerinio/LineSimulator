@@ -28,7 +28,14 @@ def test_program_pickup_waits_until_bath_minimum_process_time():
     configuration = SimulationConfiguration(
         stations=[
             Station(1, "Load", True, 0.0, 0.0, is_process_bath=False),
-            Station(2, "Bath", True, 10.0, 30.0),
+            Station(
+                2,
+                "Bath",
+                True,
+                10.0,
+                30.0,
+                is_process_bath=False,
+            ),
             Station(3, "Unload", True, 0.0, 0.0, is_process_bath=False),
         ],
         manipulators=[

@@ -103,6 +103,21 @@ class StationDelegate(QStyledItemDelegate):
             disp = display_station_id(int(s.id))
             name = str(getattr(s, "name", "")).strip()
             combo.addItem(f"{disp} - {name}", disp)
+        # Adjust the editor width to fit the longest item so text is visible
+        fm = combo.fontMetrics()
+        max_w = 0
+        for i in range(combo.count()):
+            w = fm.horizontalAdvance(combo.itemText(i))
+            if w > max_w:
+                max_w = w
+        # padding for arrow/scrollbar
+        max_w = max_w + 48
+        combo.setSizeAdjustPolicy(QComboBox.AdjustToContents)
+        combo.setMinimumWidth(max_w)
+        try:
+            combo.view().setMinimumWidth(max_w)
+        except Exception:
+            pass
         return combo
 
     def setEditorData(self, editor, index):
@@ -544,9 +559,10 @@ class CyclogramTab(QWidget):
                 "Status"
             ]
         )
-        self.table.horizontalHeader().setSectionResizeMode(
-            QHeaderView.ResizeToContents
-        )
+        header = self.table.horizontalHeader()
+        # Make columns user-adjustable (interactive resize) so long text can be revealed
+        header.setSectionResizeMode(QHeaderView.Interactive)
+        header.setSectionsMovable(True)
         self.table.setVerticalScrollMode(
             QAbstractItemView.ScrollPerPixel
         )
