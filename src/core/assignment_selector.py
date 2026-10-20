@@ -212,7 +212,7 @@ class AssignmentSelector:
                     return assignment
             if allow_yield and hasattr(self.transport_engine, 'propose_yield'):
                 proposal = self.transport_engine.propose_yield(
-                    blocked_target=target_station,
+                    blocked_target=source_station,
                     current_time=candidate_time
                 )
                 if proposal is not None:

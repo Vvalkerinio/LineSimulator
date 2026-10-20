@@ -2,6 +2,7 @@ from src.core.shared_bath_selector import (
     SharedBathSelector
 )
 from src.core.event_driven_simulator import EventDrivenSimulator
+from src.core.predictive_pickup_scheduler import PredictivePickupScheduler
 from src.model.manipulator import Manipulator
 from src.model.simulation_configuration import SimulationConfiguration
 from src.model.station import Station
@@ -68,3 +69,43 @@ def test_percent_stagger_dispatches_early_enough_for_overlapping_bath_loads():
 
     assert second_bath_entry == first_bath_entry + 115.0
     assert second_bath_entry < first_bath_entry + 230.0
+
+
+def test_process_end_commits_yield_to_clear_neighbor_from_pickup_station(monkeypatch):
+    monkeypatch.setattr(
+        PredictivePickupScheduler,
+        "schedule_check",
+        lambda *args, **kwargs: None,
+    )
+    stations = [
+        Station(
+            station_id,
+            f"Station {station_id}",
+            True,
+            10.0,
+            30.0,
+            is_process_bath=station_id not in (1, 8),
+        )
+        for station_id in range(1, 9)
+    ]
+    configuration = SimulationConfiguration(
+        stations=stations,
+        manipulators=[
+            Manipulator(1, 1, 1.0, 1.0, 1.0, 1, 5),
+            Manipulator(2, 8, 1.0, 1.0, 1.0, 5, 8),
+        ],
+        hanger_count=1,
+        entry_interval=60.0,
+        minimum_manipulator_spacing=2.0,
+    )
+
+    result = EventDrivenSimulator(configuration).run()
+
+    assert len(result.manipulator_tasks) == 7
+    assert any(
+        move.yielding_manipulator_id == 1
+        and move.blocked_manipulator_id == 2
+        and move.end_position <= 3
+        for move in result.event_track_yields
+    )
+    assert result.deferred_transports == []
