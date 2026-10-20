@@ -65,6 +65,45 @@ class TrajectoryManager:
             end_time=samples[-1].time,
         ))
 
+    def replace_move(
+        self,
+        manipulator_id,
+        start_position,
+        end_position,
+        old_start_time,
+        old_end_time,
+        new_start_time,
+        travel_time_per_position,
+    ):
+        manipulator_id = int(manipulator_id)
+        segments = self._segments_by_manipulator.get(manipulator_id, [])
+        match = next(
+            (
+                segment
+                for segment in segments
+                if abs(float(segment.start_position) - float(start_position)) <= 1e-9
+                and abs(float(segment.end_position) - float(end_position)) <= 1e-9
+                and abs(float(segment.start_time) - float(old_start_time)) <= 1e-9
+                and abs(float(segment.end_time) - float(old_end_time)) <= 1e-9
+            ),
+            None,
+        )
+        if match is None:
+            return False
+
+        self._segments.remove(match)
+        index = segments.index(match)
+        segments.pop(index)
+        self._segment_start_times[manipulator_id].pop(index)
+        self.add_move(
+            manipulator_id=manipulator_id,
+            start_position=start_position,
+            end_position=end_position,
+            start_time=new_start_time,
+            travel_time_per_position=travel_time_per_position,
+        )
+        return True
+
     def active_segments(self, start_time, end_time):
         result = []
         for manipulator_id in self._segments_by_manipulator:

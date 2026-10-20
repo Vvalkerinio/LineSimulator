@@ -1,5 +1,6 @@
 import math
 from bisect import bisect_left, bisect_right
+from dataclasses import replace
 
 from src.core.simulation_debug import debug_print
 from src.core.simulation_preflight import SimulationPreflightValidator
@@ -16,6 +17,7 @@ from src.core.deadlock_detector import DeadlockDetector
 from src.core.event_driven_passing_detector import EventDrivenPassingDetector
 from src.core.shared_bath_group_builder import SharedBathGroupBuilder
 from src.core.shared_bath_selector import SharedBathSelector
+from src.core.event_driven_idle_parking import EventDrivenIdleParking
 from src.core.station_reservation_service import StationReservationService
 from src.core.deadline_aware_transport import DeadlineAwareTransport
 from src.core.predictive_pickup_scheduler import PredictivePickupScheduler
@@ -195,6 +197,16 @@ class EventDrivenSimulator:
         processor = EventDrivenProcessor(state)
         process_engine = ProcessTimeEngine()
         passing_detector = EventDrivenPassingDetector(services.trajectory_manager, services.manipulator_manager)
+        assignment_engine = services.transport_scheduler.assignment_selector.transport_engine
+        idle_parking = EventDrivenIdleParking(
+            manipulator_manager=services.manipulator_manager,
+            station_manager=station_manager,
+            station_reservation_service=station_reservation_service,
+            track_service=services.track_service,
+            passing_detector=passing_detector,
+            track_safety=assignment_engine.track_safety,
+            required_spacing=float(self.config.minimum_manipulator_spacing),
+        )
         deferred_transports = {}
         last_deferred_wake_time = {'value': None}
         max_factory_hanger_id = 0
@@ -397,13 +409,71 @@ class EventDrivenSimulator:
             manipulator = services.manipulator_manager.get(scheduled.manipulator_id)
             last_time, last_position = last_manipulator_state[manipulator.id]
             assignment_engine = services.transport_scheduler.assignment_selector.transport_engine
-            if not proposal_respects_full_spacing(scheduled, manipulator, last_position):
+            parking_plan = idle_parking.plan(
+                manipulator=manipulator,
+                source_station=scheduled.source_station,
+                target_station=scheduled.target_station,
+                hanger_id=scheduled.hanger_id,
+                current_position=last_position,
+                available_time=max(float(last_time), float(event_time)),
+                pickup_finish_time=scheduled.pickup_finish_time,
+                stations=self.config.stations,
+            )
+            yield_planner = getattr(assignment_engine, 'yield_planner', None)
+            yield_to_retime = None
+            if parking_plan is not None:
+                overlapping_yields = [
+                    move
+                    for move in getattr(yield_planner, 'moves', ())
+                    if (
+                        int(move.yielding_manipulator_id) == int(manipulator.id)
+                        and float(move.start_time)
+                        < float(parking_plan.approach_start_time) - 1e-9
+                        and float(move.end_time)
+                        > float(parking_plan.departure_time) + 1e-9
+                    )
+                ]
+                matching_yields = [
+                    move
+                    for move in overlapping_yields
+                    if (
+                        abs(float(move.start_position) - float(last_position)) <= 1e-9
+                        and int(round(float(move.end_position)))
+                        == int(parking_plan.station_id)
+                        and float(move.start_time)
+                        >= float(parking_plan.arrival_time) - 1e-9
+                    )
+                ]
+                if len(overlapping_yields) == 1 and len(matching_yields) == 1:
+                    yield_to_retime = matching_yields[0]
+                elif overlapping_yields:
+                    # A committed yield already owns this part of the
+                    # manipulator's trajectory. Do not overlay another
+                    # parking move on top of it.
+                    parking_plan = None
+            trajectory_position = services.trajectory_manager.position_at(
+                int(manipulator.id),
+                float(scheduled.pickup_start_time),
+            )
+            pickup_start_position = (
+                parking_plan.station_id
+                if parking_plan is not None
+                else (
+                    last_position
+                    if trajectory_position is None or trajectory_position == 0
+                    else trajectory_position
+                )
+            )
+            if parking_plan is not None:
+                scheduled.pickup_start_time = parking_plan.approach_start_time
+                debug_print(lambda: f'IDLE_PARKING_PLANNED M={manipulator.id} from={last_position} to={parking_plan.station_id} depart={parking_plan.departure_time:.1f} arrive={parking_plan.arrival_time:.1f} pickup={parking_plan.approach_start_time:.1f}')
+            if not proposal_respects_full_spacing(scheduled, manipulator, pickup_start_position):
                 retry_at=max(float(event_time)+self.RETRY_INTERVAL,float(scheduled.pickup_start_time))
                 defer_transport(hanger_id=scheduled.hanger_id, manipulator_id=scheduled.manipulator_id, source_station=scheduled.source_station, target_station=scheduled.target_station, current_time=event_time, reason='FULL_SPACING_BLOCKED', ready_at=retry_at)
                 self.engine.schedule(Event(retry_at, EventType.QUEUE_RELEASE, None, None, None, scheduled.source_station))
                 return False
             if not assignment_engine.validate_static_occupancy(
-                manipulator, last_position,
+                manipulator, pickup_start_position,
                 scheduled.source_station, scheduled.target_station,
                 scheduled.pickup_start_time, scheduled.pickup_finish_time,
                 scheduled.transport_start_time, scheduled.transport_finish_time,
@@ -451,7 +521,7 @@ class EventDrivenSimulator:
                     None, None, None, scheduled.source_station
                 ))
                 return False
-            passing_ok = passing_detector.transport_allowed(manipulator_id=manipulator.id, start_position=last_position, target_position=scheduled.target_station, start_time=scheduled.pickup_start_time, finish_time=scheduled.return_finish_time)
+            passing_ok = passing_detector.transport_allowed(manipulator_id=manipulator.id, start_position=pickup_start_position, target_position=scheduled.target_station, start_time=scheduled.pickup_start_time, finish_time=scheduled.return_finish_time)
             if not passing_ok:
                 defer_transport(hanger_id=scheduled.hanger_id, manipulator_id=scheduled.manipulator_id, source_station=scheduled.source_station, target_station=scheduled.target_station, current_time=event_time, reason='NO_PASSING_BLOCKED')
                 return False
@@ -459,19 +529,131 @@ class EventDrivenSimulator:
             if not target_can_be_reserved:
                 defer_transport(hanger_id=scheduled.hanger_id, manipulator_id=scheduled.manipulator_id, source_station=scheduled.source_station, target_station=scheduled.target_station, current_time=event_time, reason='TARGET_STATION_RESERVED')
                 return False
+            if parking_plan is not None and yield_to_retime is not None:
+                updated_yield = yield_planner.reschedule_for_parking(
+                    yield_to_retime,
+                    parking_plan.departure_time,
+                    parking_plan.arrival_time,
+                )
+                if updated_yield is None:
+                    raise RuntimeError(
+                        f'Unable to reconcile the existing yield for '
+                        f'manipulator {manipulator.id} with its idle parking move'
+                    )
+                parking_plan = replace(
+                    parking_plan,
+                    replaced_yield=updated_yield,
+                )
+                self.engine.schedule(Event(
+                    float(updated_yield.end_time),
+                    EventType.QUEUE_RELEASE,
+                    None,
+                    None,
+                    None,
+                    int(round(float(updated_yield.blocked_target))),
+                ))
+                blocked_station = int(round(float(updated_yield.blocked_target)))
+                for waiting in deferred_transports.values():
+                    if (
+                        int(waiting.source_station) == blocked_station
+                        and abs(
+                            float(waiting.ready_at)
+                            - float(yield_to_retime.end_time)
+                        ) <= 1e-9
+                    ):
+                        waiting.ready_at = float(updated_yield.end_time)
+            if parking_plan is not None:
+                if not station_reservation_service.reserve(
+                    station_id=parking_plan.station_id,
+                    hanger_id=scheduled.hanger_id,
+                    start_time=parking_plan.arrival_time,
+                    source='manipulator_idle_park',
+                ):
+                    raise RuntimeError(
+                        f'Unable to reserve idle parking station '
+                        f'{parking_plan.station_id} for hanger {scheduled.hanger_id}'
+                    )
+                station_reservation_service.release_at(
+                    station_id=parking_plan.station_id,
+                    hanger_id=scheduled.hanger_id,
+                    release_time=parking_plan.approach_start_time,
+                )
             services.transport_scheduler.assignment_selector.availability.reserve(
                 scheduled.manipulator_id, scheduled.return_finish_time
             )
             services.transport_scheduler.release_source_station_at_pickup(hanger_id=scheduled.hanger_id, source_station=scheduled.source_station, pickup_time=scheduled.pickup_finish_time)
             first_new_segment = len(result.timeline_segments)
-            self._append_idle_segment(result, manipulator, last_time, last_position, scheduled.pickup_start_time)
-            self._append_motion_segments(result, manipulator, scheduled, last_position)
+            if parking_plan is None:
+                self._append_idle_segment(result, manipulator, last_time, last_position, scheduled.pickup_start_time)
+            else:
+                self._append_idle_segment(
+                    result,
+                    manipulator,
+                    last_time,
+                    last_position,
+                    parking_plan.departure_time,
+                )
+                if parking_plan.replaced_yield is None:
+                    result.timeline_segments.append(
+                        ManipulatorTimelineSegment(
+                            manipulator_id=manipulator.id,
+                            start_time=parking_plan.departure_time,
+                            end_time=parking_plan.arrival_time,
+                            start_position=last_position,
+                            end_position=parking_plan.station_id,
+                            segment_type='empty_move',
+                        )
+                    )
+                self._append_idle_segment(
+                    result,
+                    manipulator,
+                    parking_plan.arrival_time,
+                    parking_plan.station_id,
+                    scheduled.pickup_start_time,
+                )
+            self._append_motion_segments(
+                result,
+                manipulator,
+                scheduled,
+                pickup_start_position,
+            )
             for segment in result.timeline_segments[first_new_segment:]:
                 index_timeline_segment(segment)
-            if last_position != scheduled.source_station:
+            if parking_plan is not None:
+                services.track_service.reserve(
+                    manipulator_id=manipulator.id,
+                    source_station=int(round(last_position)),
+                    target_station=parking_plan.station_id,
+                    start_time=parking_plan.departure_time,
+                    travel_time_per_position=manipulator.travel_time_per_position,
+                )
+                services.track_service.reserve(
+                    manipulator_id=manipulator.id,
+                    source_station=parking_plan.station_id,
+                    target_station=scheduled.source_station,
+                    start_time=scheduled.pickup_start_time,
+                    travel_time_per_position=manipulator.travel_time_per_position,
+                )
+                if parking_plan.replaced_yield is None:
+                    services.trajectory_manager.add_move(
+                        manipulator_id=manipulator.id,
+                        start_position=int(round(last_position)),
+                        end_position=parking_plan.station_id,
+                        start_time=parking_plan.departure_time,
+                        travel_time_per_position=manipulator.travel_time_per_position,
+                    )
+                services.trajectory_manager.add_move(
+                    manipulator_id=manipulator.id,
+                    start_position=parking_plan.station_id,
+                    end_position=scheduled.source_station,
+                    start_time=scheduled.pickup_start_time,
+                    travel_time_per_position=manipulator.travel_time_per_position,
+                )
+            elif last_position != scheduled.source_station:
                 services.track_service.reserve(manipulator_id=manipulator.id, source_station=last_position, target_station=scheduled.source_station, start_time=scheduled.pickup_start_time, travel_time_per_position=manipulator.travel_time_per_position)
             services.track_service.reserve(manipulator_id=manipulator.id, source_station=scheduled.source_station, target_station=scheduled.target_station, start_time=scheduled.transport_start_time, travel_time_per_position=manipulator.travel_time_per_position)
-            services.trajectory_manager.add_move(manipulator_id=manipulator.id, start_position=last_position, end_position=scheduled.source_station, start_time=scheduled.pickup_start_time, travel_time_per_position=manipulator.travel_time_per_position)
+            if parking_plan is None:
+                services.trajectory_manager.add_move(manipulator_id=manipulator.id, start_position=last_position, end_position=scheduled.source_station, start_time=scheduled.pickup_start_time, travel_time_per_position=manipulator.travel_time_per_position)
             if scheduled.return_finish_time > scheduled.return_start_time:
                 services.track_service.reserve(manipulator_id=manipulator.id, source_station=scheduled.target_station, target_station=scheduled.return_position, start_time=scheduled.return_start_time, travel_time_per_position=manipulator.travel_time_per_position)
             services.trajectory_manager.add_move(manipulator_id=manipulator.id, start_position=scheduled.source_station, end_position=scheduled.target_station, start_time=scheduled.transport_start_time, travel_time_per_position=manipulator.travel_time_per_position)
