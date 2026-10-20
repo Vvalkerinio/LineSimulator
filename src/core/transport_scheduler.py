@@ -46,12 +46,43 @@ class TransportScheduler:
             return True
         return self.station_reservation_service.reserve(station_id=target_station, hanger_id=hanger_id, start_time=drop_time, source='scheduled_transport')
 
-    def release_source_station_at_pickup(self, hanger_id: int, source_station: int, pickup_time: float):
+    def release_source_station_at_pickup(self, hanger_id: int, source_station: int, pickup_time: float, provisional: bool=False):
         if not self._is_finite_number(pickup_time):
             return
         if self.station_reservation_service is None:
             return
+        if provisional:
+            self.station_reservation_service.plan_release_at(
+                station_id=source_station,
+                hanger_id=hanger_id,
+                release_time=pickup_time,
+            )
+            return
         self.station_reservation_service.release_at(station_id=source_station, hanger_id=hanger_id, release_time=pickup_time)
+
+    def update_target_station_reservation(self, hanger_id: int, target_station: int, drop_time: float) -> bool:
+        if not self._is_finite_number(drop_time):
+            return False
+        if self.station_reservation_service is None:
+            return True
+        return self.station_reservation_service.update_open_reservation(
+            station_id=target_station,
+            hanger_id=hanger_id,
+            start_time=drop_time,
+            source='provisional_transport',
+        )
+
+    def cancel_provisional_transport(self, hanger_id: int, source_station: int, target_station: int):
+        if self.station_reservation_service is None:
+            return
+        self.station_reservation_service.cancel_provisional_reservation(
+            station_id=target_station,
+            hanger_id=hanger_id,
+        )
+        self.station_reservation_service.cancel_provisional_release(
+            station_id=source_station,
+            hanger_id=hanger_id,
+        )
 
     def _select_assignment(self, source_station, target_station, current_time, latest_pickup_time=None, earliest_pickup_time=None, earliest_transport_finish_time=None):
         try:

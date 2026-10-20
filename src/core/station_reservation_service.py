@@ -9,6 +9,7 @@ class StationReservation:
     start_time: float
     end_time: float | None = None
     source: str = ''
+    release_is_provisional: bool = False
 
 class StationReservationService:
 
@@ -24,6 +25,11 @@ class StationReservationService:
 
     def _overlaps_open_interval(self, reservation, start_time: float) -> bool:
         if reservation.end_time is not None and reservation.end_time <= start_time:
+            return False
+        if (
+            reservation.source == 'provisional_transport'
+            and reservation.start_time > start_time
+        ):
             return False
         return True
 
@@ -42,11 +48,68 @@ class StationReservationService:
             return False
         existing = self._find_open_reservation(station_id, hanger_id)
         if existing is not None:
-            existing.start_time = min(existing.start_time, start_time)
+            if existing.source == 'provisional_transport':
+                existing.start_time = float(start_time)
+            else:
+                existing.start_time = min(existing.start_time, start_time)
+            existing.source = source
             return True
         self._reservations.append(StationReservation(station_id=station_id, hanger_id=hanger_id, start_time=start_time, end_time=None, source=source))
         debug_print(lambda: f'STATION RESERVE S={display_station_id(station_id)} H={hanger_id} from={start_time:.1f}')
         return True
+
+    def update_open_reservation(self, station_id: int, hanger_id: int, start_time: float, source: str) -> bool:
+        existing = self._find_open_reservation(station_id, hanger_id)
+        if existing is None:
+            return self.reserve(
+                station_id=station_id,
+                hanger_id=hanger_id,
+                start_time=start_time,
+                source=source,
+            )
+        if not self.can_reserve(station_id, hanger_id, start_time):
+            return False
+        existing.start_time = float(start_time)
+        existing.source = source
+        return True
+
+    def plan_release_at(self, station_id: int, hanger_id: int, release_time: float) -> None:
+        candidates = [
+            reservation
+            for reservation in self._reservations
+            if reservation.station_id == station_id
+            and reservation.hanger_id == hanger_id
+            and (
+                reservation.end_time is None
+                or reservation.release_is_provisional
+            )
+        ]
+        if not candidates:
+            return
+        reservation = max(candidates, key=lambda item: item.start_time)
+        reservation.end_time = float(release_time)
+        reservation.release_is_provisional = True
+
+    def cancel_provisional_release(self, station_id: int, hanger_id: int) -> None:
+        for reservation in self._reservations:
+            if (
+                reservation.station_id == station_id
+                and reservation.hanger_id == hanger_id
+                and reservation.release_is_provisional
+            ):
+                reservation.end_time = None
+                reservation.release_is_provisional = False
+
+    def cancel_provisional_reservation(self, station_id: int, hanger_id: int) -> None:
+        self._reservations = [
+            reservation
+            for reservation in self._reservations
+            if not (
+                reservation.station_id == station_id
+                and reservation.hanger_id == hanger_id
+                and reservation.source == 'provisional_transport'
+            )
+        ]
 
     def _find_open_reservation(self, station_id: int, hanger_id: int):
         candidates = [reservation for reservation in self._reservations if reservation.station_id == station_id and reservation.hanger_id == hanger_id and (reservation.end_time is None)]
@@ -56,10 +119,21 @@ class StationReservationService:
         return candidates[0]
 
     def release_at(self, station_id: int, hanger_id: int, release_time: float) -> None:
-        reservation = self._find_open_reservation(station_id, hanger_id)
-        if reservation is None:
+        candidates = [
+            reservation
+            for reservation in self._reservations
+            if reservation.station_id == station_id
+            and reservation.hanger_id == hanger_id
+            and (
+                reservation.end_time is None
+                or reservation.release_is_provisional
+            )
+        ]
+        if not candidates:
             return
-        reservation.end_time = release_time
+        reservation = max(candidates, key=lambda item: item.start_time)
+        reservation.end_time = float(release_time)
+        reservation.release_is_provisional = False
         debug_print(lambda: f'STATION RELEASE_AT S={display_station_id(station_id)} H={hanger_id} until={release_time:.1f}')
 
     def earliest_available_time(self, station_id: int, current_time: float) -> float:

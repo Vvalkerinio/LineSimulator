@@ -203,17 +203,37 @@ class AssignmentSelector:
             if next_candidate_time is not None:
                 candidate_time = next_candidate_time
                 continue
+            conflicting_reservation_end = None
             for assignment in assignments:
+                conflict_end = self.availability.conflicting_reservation_end(
+                    manipulator_id=int(manipulator.id),
+                    start_time=float(assignment.pickup_start_time),
+                    finish_time=float(assignment.return_finish_time),
+                )
+                if conflict_end is not None:
+                    if (
+                        conflicting_reservation_end is None
+                        or conflict_end < conflicting_reservation_end
+                    ):
+                        conflicting_reservation_end = conflict_end
+                    continue
                 if self._assignment_is_valid(
                     manipulator=manipulator,
                     assignment=assignment,
                     start_time=candidate_time
                 ):
                     return assignment
+            if conflicting_reservation_end is not None:
+                candidate_time += max(
+                    self.TRACK_SEARCH_STEP,
+                    conflicting_reservation_end
+                    - assignments[0].pickup_start_time,
+                )
+                continue
             if allow_yield and hasattr(self.transport_engine, 'propose_yield'):
                 proposal = self.transport_engine.propose_yield(
                     blocked_target=source_station,
-                    current_time=candidate_time
+                    current_time=current_time
                 )
                 if proposal is not None:
                     # Candidate evaluation is side-effect free. The caller may
