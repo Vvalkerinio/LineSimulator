@@ -717,7 +717,16 @@ class EventDrivenSimulator:
                 scheduled = services.transport_scheduler.schedule(hanger_id=event.hanger_id, source_station=event.target_station, target_station=next_station, current_time=event.time, latest_pickup_time=latest_pickup_time, earliest_transport_finish_time=schedule_time)
                 if scheduled is None:
                     debug_print(lambda: f'SCHEDULE FAILED H={event.hanger_id} SRC={event.target_station} DST={next_station} T={event.time:.1f} SCHEDULE_AT={schedule_time:.1f}')
-                    defer_transport(hanger_id=event.hanger_id, manipulator_id=None, source_station=event.target_station, target_station=next_station, current_time=event.time, reason='ASSIGNMENT_BLOCKED')
+                    move = commit_selector_yield(event.time, event.target_station)
+                    defer_transport(
+                        hanger_id=event.hanger_id,
+                        manipulator_id=None,
+                        source_station=event.target_station,
+                        target_station=next_station,
+                        current_time=event.time,
+                        reason='YIELD_REQUIRED' if move is not None else 'ASSIGNMENT_BLOCKED',
+                        ready_at=move.end_time if move is not None else None
+                    )
                     continue
                 ok = commit_scheduled_transport(scheduled=scheduled, event_time=event.time)
                 if not ok:
