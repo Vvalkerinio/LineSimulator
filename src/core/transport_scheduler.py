@@ -53,20 +53,23 @@ class TransportScheduler:
             return
         self.station_reservation_service.release_at(station_id=source_station, hanger_id=hanger_id, release_time=pickup_time)
 
-    def _select_assignment(self, source_station, target_station, current_time, latest_pickup_time=None, earliest_pickup_time=None):
+    def _select_assignment(self, source_station, target_station, current_time, latest_pickup_time=None, earliest_pickup_time=None, earliest_transport_finish_time=None):
         try:
-            return self.assignment_selector.select(source_station=source_station, target_station=target_station, current_time=current_time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=earliest_pickup_time)
+            return self.assignment_selector.select(source_station=source_station, target_station=target_station, current_time=current_time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=earliest_pickup_time, earliest_transport_finish_time=earliest_transport_finish_time)
         except TypeError:
-            return self.assignment_selector.select(source_station=source_station, target_station=target_station, current_time=current_time)
+            try:
+                return self.assignment_selector.select(source_station=source_station, target_station=target_station, current_time=current_time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=earliest_pickup_time)
+            except TypeError:
+                return self.assignment_selector.select(source_station=source_station, target_station=target_station, current_time=current_time)
 
-    def schedule(self, hanger_id: int, source_station: int, target_station: int, current_time: float, latest_pickup_time: float | None=None, earliest_pickup_time: float | None=None):
+    def schedule(self, hanger_id: int, source_station: int, target_station: int, current_time: float, latest_pickup_time: float | None=None, earliest_pickup_time: float | None=None, earliest_transport_finish_time: float | None=None):
         if target_station is None:
             debug_print(lambda: f'SCHEDULE BLOCKED H={hanger_id} SRC={source_station} DST=None T={current_time} reason=NO_TARGET_STATION')
             return None
         if not self._is_finite_number(current_time):
             debug_print(lambda: f'SCHEDULE BLOCKED H={hanger_id} SRC={source_station} DST={target_station} T={current_time} reason=NON_FINITE_CURRENT_TIME')
             return None
-        assignment = self._select_assignment(source_station=source_station, target_station=target_station, current_time=current_time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=earliest_pickup_time)
+        assignment = self._select_assignment(source_station=source_station, target_station=target_station, current_time=current_time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=earliest_pickup_time, earliest_transport_finish_time=earliest_transport_finish_time)
         if not self._assignment_is_valid(assignment):
             debug_print(lambda: f'SCHEDULE BLOCKED H={hanger_id} SRC={source_station} DST={target_station} T={current_time:.1f} reason=INVALID_ASSIGNMENT')
             return None

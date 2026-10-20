@@ -646,7 +646,7 @@ class EventDrivenSimulator:
                     continue
                 availability = services.transport_scheduler.assignment_selector.availability
                 availability_before = dict(getattr(availability, '_busy_until', {}))
-                scheduled = services.transport_scheduler.schedule(hanger_id=event.hanger_id, source_station=source_station, target_station=next_station, current_time=schedule_time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=earliest_pickup_time)
+                scheduled = services.transport_scheduler.schedule(hanger_id=event.hanger_id, source_station=source_station, target_station=next_station, current_time=event.time, latest_pickup_time=latest_pickup_time, earliest_pickup_time=earliest_pickup_time, earliest_transport_finish_time=schedule_time)
                 if scheduled is None:
                     move = commit_selector_yield(event.time, source_station)
                     retry_time = (
@@ -708,17 +708,13 @@ class EventDrivenSimulator:
                     continue
                 next_station = route[next_index]
                 next_station, schedule_time = self._select_shared_bath_target(next_station, shared_bath_selector, event.time)
-                if (next_station is not None and int(event.target_station) == int(route[0]) and float(schedule_time) > float(event.time) + 1e-9):
-                    self.engine.schedule(Event(float(schedule_time), EventType.PROCESS_END, None, event.hanger_id, event.target_station, event.target_station))
-                    debug_print(lambda: f'SHARED_BATH_ENTRY_DEFER_COMMIT H={event.hanger_id} SRC={event.target_station} DST={next_station} current={event.time:.1f} retry_at={float(schedule_time):.1f}')
-                    continue
                 if next_station is None:
                     schedule_shared_bath_retry(event=event, retry_time=schedule_time, reason='GROUP_OCCUPIED')
                     continue
                 deadline_text = deadline_transport.describe(hanger_id=event.hanger_id, station_id=event.target_station, current_time=event.time)
                 debug_print(lambda: f'H={event.hanger_id} {event.target_station} -> {next_station} schedule_at={schedule_time:.1f} {deadline_text}')
                 latest_pickup_time = deadline_transport.latest_pickup_time(hanger_id=event.hanger_id, station_id=event.target_station)
-                scheduled = services.transport_scheduler.schedule(hanger_id=event.hanger_id, source_station=event.target_station, target_station=next_station, current_time=schedule_time, latest_pickup_time=latest_pickup_time)
+                scheduled = services.transport_scheduler.schedule(hanger_id=event.hanger_id, source_station=event.target_station, target_station=next_station, current_time=event.time, latest_pickup_time=latest_pickup_time, earliest_transport_finish_time=schedule_time)
                 if scheduled is None:
                     debug_print(lambda: f'SCHEDULE FAILED H={event.hanger_id} SRC={event.target_station} DST={next_station} T={event.time:.1f} SCHEDULE_AT={schedule_time:.1f}')
                     defer_transport(hanger_id=event.hanger_id, manipulator_id=None, source_station=event.target_station, target_station=next_station, current_time=event.time, reason='ASSIGNMENT_BLOCKED')
