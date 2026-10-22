@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QLabel,
     QDoubleSpinBox,
+    QSpinBox,
     QComboBox,
     QGraphicsView,
     QGraphicsScene,
@@ -442,6 +443,17 @@ class ManipulatorTrajectoryTab(QWidget):
             self.show_plc_indexes
         )
 
+        self.show_consult_waits = QCheckBox(
+            "Czekanie na consulty"
+        )
+        self.show_consult_waits.setChecked(True)
+        self.show_consult_waits.stateChanged.connect(
+            self.draw
+        )
+        controls.addWidget(
+            self.show_consult_waits
+        )
+
         self.toggle_station_animation_button = QPushButton(
             "Ukryj czasy wanien"
         )
@@ -454,6 +466,36 @@ class ManipulatorTrajectoryTab(QWidget):
 
         layout.addLayout(
             controls
+        )
+
+        display_controls = QHBoxLayout()
+        display_controls.addWidget(
+            QLabel("Rozmiar numeru kroku")
+        )
+        self.step_label_size = QSpinBox()
+        self.step_label_size.setRange(6, 24)
+        self.step_label_size.setValue(11)
+        self.step_label_size.valueChanged.connect(
+            self.draw
+        )
+        display_controls.addWidget(
+            self.step_label_size
+        )
+        display_controls.addWidget(
+            QLabel("Rozmiar markerów podn./opuszcz.")
+        )
+        self.marker_size = QSpinBox()
+        self.marker_size.setRange(4, 18)
+        self.marker_size.setValue(9)
+        self.marker_size.valueChanged.connect(
+            self.draw
+        )
+        display_controls.addWidget(
+            self.marker_size
+        )
+        display_controls.addStretch(1)
+        layout.addLayout(
+            display_controls
         )
 
         time_controls = QHBoxLayout()
@@ -2133,6 +2175,12 @@ class ManipulatorTrajectoryTab(QWidget):
         )
 
         for _label, result, source_kind in self._results_to_draw():
+            self._draw_trajectory_holds(
+                result,
+                source_kind,
+                start,
+                shown_end
+            )
 
             for segment in getattr(
                 result,
@@ -2179,8 +2227,111 @@ class ManipulatorTrajectoryTab(QWidget):
                     pen
                 )
 
+    @staticmethod
+    def _trajectory_hold_intervals(
+        segments,
+        start_time,
+        end_time,
+        initial_position
+    ):
+        cursor = float(start_time)
+        end_time = float(end_time)
+        position = float(initial_position)
+        intervals = []
+
+        ordered_segments = sorted(
+            segments,
+            key=lambda segment: (
+                float(segment.start_time),
+                float(segment.end_time)
+            )
+        )
+
+        for segment in ordered_segments:
+            segment_start = float(segment.start_time)
+            segment_end = float(segment.end_time)
+
+            if segment_end <= cursor:
+                continue
+
+            if segment_start > cursor:
+                hold_end = min(segment_start, end_time)
+                if hold_end > cursor:
+                    intervals.append(
+                        (cursor, hold_end, position)
+                    )
+                    cursor = hold_end
+
+                if cursor >= end_time:
+                    return intervals
+
+            if segment_end > cursor:
+                if segment_end >= end_time:
+                    return intervals
+                cursor = segment_end
+                position = float(segment.end_position)
+
+        if cursor < end_time:
+            intervals.append(
+                (cursor, end_time, position)
+            )
+
+        return intervals
+
+    def _draw_trajectory_holds(
+        self,
+        result,
+        source_kind,
+        start_time,
+        end_time
+    ):
+        if end_time <= start_time:
+            return
+
+        segments_by_manipulator = {}
+        for segment in getattr(result, "timeline_segments", []):
+            segments_by_manipulator.setdefault(
+                int(segment.manipulator_id),
+                []
+            ).append(segment)
+
+        for manipulator_id, segments in segments_by_manipulator.items():
+            initial_position = self._position_at(
+                result,
+                manipulator_id,
+                start_time
+            )
+            intervals = self._trajectory_hold_intervals(
+                segments,
+                start_time,
+                end_time,
+                initial_position
+            )
+            if not intervals:
+                continue
+
+            pen = QPen(
+                self._color_for_manipulator(manipulator_id)
+            )
+            pen.setWidth(2 if source_kind == "program" else 3)
+            pen.setStyle(Qt.DotLine)
+
+            for hold_start, hold_end, position in intervals:
+                self.scene.addLine(
+                    QLineF(
+                        self._x(hold_start),
+                        self._y(position),
+                        self._x(hold_end),
+                        self._y(position)
+                    ),
+                    pen
+                )
+
     def _draw_consult_waits(self):
         """Draw ProgramDriven consult blocking periods as red overlays."""
+        if not self.show_consult_waits.isChecked():
+            return
+
         if self._source_mode() not in [
             self.SOURCE_PROGRAM,
             self.SOURCE_OVERLAY
@@ -2269,7 +2420,7 @@ class ManipulatorTrajectoryTab(QWidget):
 
         font = QFont()
         font.setPointSize(
-            8
+            self.step_label_size.value()
         )
         font.setBold(
             True
@@ -2797,10 +2948,7 @@ class ManipulatorTrajectoryTab(QWidget):
             )
         )
 
-        size = 7
-
-        if source_kind == "program":
-            size = 5
+        size = self.marker_size.value()
 
         polygon = QPolygonF(
             [
@@ -2866,10 +3014,7 @@ class ManipulatorTrajectoryTab(QWidget):
             )
         )
 
-        size = 7
-
-        if source_kind == "program":
-            size = 5
+        size = self.marker_size.value()
 
         polygon = QPolygonF(
             [
