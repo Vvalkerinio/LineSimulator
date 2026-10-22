@@ -529,8 +529,7 @@ class EventDrivenSimulator:
             manipulator.position = scheduled.return_position
             last_manipulator_state[manipulator.id] = (scheduled.return_finish_time, scheduled.return_position)
             entry_time = state.station_entry_times.get((scheduled.hanger_id, scheduled.source_station))
-            process_end_time = state.pending_process_end_times.get((scheduled.hanger_id, scheduled.source_station))
-            if entry_time is not None and process_end_time is not None:
+            if entry_time is not None:
                 station = station_map[scheduled.source_station]
                 actual_time = scheduled.pickup_finish_time - entry_time
                 assessment = assess_process_time(station, actual_time)

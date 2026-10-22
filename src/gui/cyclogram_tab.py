@@ -33,7 +33,11 @@ from PySide6.QtGui import (
     QColor
 )
 from PySide6.QtCore import (
-    Qt
+    Qt,
+    QObject,
+    QThread,
+    Signal,
+    Slot,
 )
 from src.model.station_numbering import (
     STATION_ID_SHIFT,
@@ -85,6 +89,27 @@ from src.analysis.consult_pipeline import (
 from src.analysis.iterative_consult_resolver import (
     IterativeConsultResolver
 )
+
+
+class ConsultGenerationWorker(QObject):
+    resolved = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, resolver):
+        super().__init__()
+        self.resolver = resolver
+
+    @Slot()
+    def run(self):
+        output = io.StringIO()
+        try:
+            with synchronized_redirect_stdout(output):
+                resolution = self.resolver.resolve()
+            self.resolved.emit((resolution, output.getvalue()))
+        except Exception:
+            self.failed.emit(
+                output.getvalue() + traceback.format_exc()
+            )
 
 
 class StationDelegate(QStyledItemDelegate):
@@ -185,6 +210,8 @@ class CyclogramTab(QWidget):
         self.trajectory_tab = None
         self.reports_tab = None
 
+        self._consult_generation_thread = None
+        self._consult_generation_worker = None
 
         self.index_address_inputs = {}
         self.station_offset_inputs = {}
@@ -1503,10 +1530,10 @@ class CyclogramTab(QWidget):
 
         resolver = IterativeConsultResolver(
             configuration=(
-                self.configuration
+                deepcopy(self.configuration)
             ),
             programs=(
-                self.programs
+                deepcopy(self.programs)
             ),
             cycles=(
                 self.program_simulation_cycles.value()
@@ -1525,8 +1552,37 @@ class CyclogramTab(QWidget):
             )
         )
 
-        resolution = (
-            resolver.resolve()
+        self.generate_consults_button.setText(
+            "Generowanie consultów..."
+        )
+        self.summary_label.setText(
+            "Generowanie consultów w tle..."
+        )
+        self.setEnabled(False)
+
+        thread = QThread(self)
+        worker = ConsultGenerationWorker(resolver)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.resolved.connect(self._on_consult_generation_resolved)
+        worker.failed.connect(self._on_consult_generation_failed)
+        worker.resolved.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        thread.finished.connect(self._on_consult_generation_thread_finished)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._consult_generation_thread = thread
+        self._consult_generation_worker = worker
+        thread.start()
+
+    def _on_consult_generation_resolved(self, payload):
+        resolution, output = payload
+        if output:
+            print(output, end="")
+        self.setEnabled(True)
+        self.generate_consults_button.setText("Generuj consulty")
+        self.summary_label.setText(
+            f"Generowanie consultów zakończone: {len(resolution.consults)}."
         )
 
         self.consults = (
@@ -1620,6 +1676,25 @@ class CyclogramTab(QWidget):
                 f"Pominięte przez cykle: {len(resolution.skipped_consults)}"
             )
         )
+
+    def _on_consult_generation_failed(self, error_text):
+        self.setEnabled(True)
+        self.generate_consults_button.setText("Generuj consulty")
+        self.summary_label.setText(
+            "Generowanie consultów nie powiodło się."
+        )
+        print(error_text, end="")
+        QMessageBox.critical(
+            self,
+            "Consulty",
+            "Nie udało się wygenerować consultów. Szczegóły błędu "
+            "zapisano w konsoli."
+        )
+
+    def _on_consult_generation_thread_finished(self):
+        self._consult_generation_worker = None
+        self._consult_generation_thread = None
+
     def _manipulator_color(self, manipulator_id):
         colors = {
             1: QColor(205, 225, 255),

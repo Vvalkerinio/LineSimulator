@@ -121,3 +121,58 @@ def test_yield_proposal_uses_dispatch_time_not_future_availability():
     assert assignment is None
     assert transport_engine.yield_times == [594.5]
     assert selector.consume_pending_yield_proposal() is proposal
+
+
+def test_late_assignment_proposes_yield_before_accepting_deadline_miss():
+    manipulator = Manipulator(2, 14, 6.5, 6.5, 4.5, 5, 14)
+    manager = ManipulatorManager([manipulator])
+    availability = ManipulatorAvailability()
+    proposal = object()
+
+    class TransportEngine:
+        def position_at(self, manipulator, time_value):
+            return manipulator.position
+
+        def validate_order(self, manipulator, target_station, time_value):
+            return True
+
+        def validate_track(self, manipulator, source_station, target_station, time_value):
+            return True
+
+        def validate_static_occupancy(
+            self,
+            manipulator,
+            current_position,
+            source_station,
+            target_station,
+            pickup_start_time,
+            pickup_finish_time,
+            transport_start_time,
+            transport_finish_time,
+            return_position,
+            return_start_time,
+            return_finish_time,
+        ):
+            return pickup_start_time >= 40.0
+
+        def validate_passing(self, manipulator, start_time, finish_time):
+            return True
+
+        def propose_yield(self, blocked_target, current_time):
+            return proposal
+
+    selector = AssignmentSelector(
+        manager,
+        availability,
+        TransportEngine(),
+    )
+
+    assignment = selector.select(
+        source_station=6,
+        target_station=8,
+        current_time=0.0,
+        latest_pickup_time=70.0,
+    )
+
+    assert assignment is None
+    assert selector.consume_pending_yield_proposal() is proposal
