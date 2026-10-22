@@ -168,7 +168,7 @@ class AssignmentSelector:
         delta = earliest_transport_finish_time - assignment.transport_finish_time
         return candidate_time + max(self.TRACK_SEARCH_STEP, delta)
 
-    def _find_best_assignment_for_manipulator(self, manipulator, source_station: int, target_station: int, current_time: float, earliest_pickup_time: float | None=None, earliest_transport_finish_time: float | None=None, allow_yield: bool=False):
+    def _find_best_assignment_for_manipulator(self, manipulator, source_station: int, target_station: int, current_time: float, earliest_pickup_time: float | None=None, earliest_transport_finish_time: float | None=None, allow_yield: bool=False, latest_pickup_time: float | None=None, yield_before_late_assignment: bool=False):
         if not self._is_allowed_by_work_zone(manipulator, source_station, target_station):
             return None
         earliest_time = max(current_time, self.availability.available_from(manipulator.id))
@@ -222,6 +222,13 @@ class AssignmentSelector:
                     assignment=assignment,
                     start_time=candidate_time
                 ):
+                    if (
+                        yield_before_late_assignment
+                        and latest_pickup_time is not None
+                        and float(assignment.pickup_finish_time)
+                        > float(latest_pickup_time) + 1e-9
+                    ):
+                        return None
                     return assignment
             if conflicting_reservation_end is not None:
                 candidate_time += max(
@@ -239,6 +246,8 @@ class AssignmentSelector:
                     # Candidate evaluation is side-effect free. The caller may
                     # commit this single proposal and retry after YIELD_END.
                     self.pending_yield_proposal = proposal
+                    return None
+                if yield_before_late_assignment:
                     return None
             candidate_time += self.TRACK_SEARCH_STEP
         return None
@@ -290,6 +299,34 @@ class AssignmentSelector:
                 if assignment is not None:
                     best_assignment = assignment
                     break
+        elif (
+            latest_pickup_time is not None
+            and float(best_assignment.pickup_finish_time)
+            > float(latest_pickup_time) + 1e-9
+        ):
+            for manipulator in self.manipulator_manager.all():
+                earlier_assignment = self._find_best_assignment_for_manipulator(
+                    manipulator=manipulator,
+                    source_station=source_station,
+                    target_station=target_station,
+                    current_time=current_time,
+                    earliest_pickup_time=earliest_pickup_time,
+                    earliest_transport_finish_time=earliest_transport_finish_time,
+                    allow_yield=True,
+                    latest_pickup_time=latest_pickup_time,
+                    yield_before_late_assignment=True,
+                )
+                if self.pending_yield_proposal is not None:
+                    return None
+                if earlier_assignment is not None:
+                    earlier_score = self._assignment_score(
+                        manipulator,
+                        earlier_assignment,
+                        latest_pickup_time,
+                    )
+                    if earlier_score < best_score:
+                        best_assignment = earlier_assignment
+                        best_score = earlier_score
         if best_assignment is None:
             debug_print(lambda: f'BLOCKED {source_station}->{target_station}')
             return None
